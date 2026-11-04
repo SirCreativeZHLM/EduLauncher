@@ -1,0 +1,66 @@
+id: io.github.sircreativezhlm.EduLauncher
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm21
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
+command: edulauncher
+finish-args:
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --share=ipc
+  - --device=all
+  - --filesystem=xdg-download:ro
+  - --env=QT_QPA_PLATFORMTHEME=xdgdesktopportal
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /include
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+modules:
+  - name: unzip
+    buildsystem: simple
+    build-commands:
+      - make -f unix/Makefile generic CC="cc -std=gnu89"
+      - install -Dm755 unzip /app/bin/unzip
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/infozip/unzip60.tar.gz
+        sha256: 036d96991646d0449ed0aa952e4fbe21b476ce994abc276e49d30e686708bd37
+
+  - name: edulauncher
+    buildsystem: simple
+    build-options:
+      prepend-path: /usr/lib/sdk/llvm21/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm21/lib
+      env:
+        CC: clang
+        CXX: clang++
+        EDU_SRC: upstream
+        EDU_BUILD: _build
+        EDU_CMAKE_ARGS: -DFETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON_EXT=/run/build/edulauncher/nlohmann_json_ext -DUSE_GAMECONTROLLERDB=OFF
+    build-commands:
+      - mkdir -p nlohmann_json_ext && cd nlohmann_json_ext && unzip -qo ../nlohmann_json_ext.zip
+      - scripts/build.sh --prefix /app --destdir ''
+      - install -Dm644 LICENSE /app/share/licenses/edulauncher/LICENSE
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - ref
+          - build
+          - .flatpak-builder
+      - type: git
+        url: https://github.com/minecraft-linux/mcpelauncher-manifest.git
+        commit: fb58aa2dbd966573844fc3fe53dadcddb6719009
+        dest: upstream
+        disable-shallow-clone: true
+      - type: file
+        url: https://github.com/nlohmann/json/releases/download/v3.7.3/include.zip
+        sha512: 8efd82a54472335e548d0d5c375b6f2781b4a0f2dbc5aa0acc3f504277ec455e0782046286cf08eb4864ac8bcaa1a9691af8d0259dd71a9e539cfc12e0478eb5
+        dest-filename: nlohmann_json_ext.zip

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Isometric block with an open book on top -->
+  <polygon points="64,14 116,42 64,70 12,42" fill="#6fbf4a"/>
+  <polygon points="12,42 64,70 64,120 12,92" fill="#8a5a36"/>
+  <polygon points="116,42 64,70 64,120 116,92" fill="#6b4428"/>
+  <polygon points="12,42 64,70 64,80 12,52" fill="#58a23a"/>
+  <polygon points="116,42 64,70 64,80 116,52" fill="#4a8a30"/>
+  <path d="M64 34 C54 28 42 28 34 32 L34 52 C42 48 54 48 64 54 Z" fill="#fdfaf2" stroke="#2c3e50" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M64 34 C74 28 86 28 94 32 L94 52 C86 48 74 48 64 54 Z" fill="#fdfaf2" stroke="#2c3e50" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M41 38 L57 41 M41 44 L57 47 M71 41 L87 38 M71 47 L87 44" stroke="#3b82c4" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,20 @@
+[Desktop Entry]
+Type=Application
+Name=Minecraft Education (EduLauncher)
+GenericName=Minecraft Education
+Comment=Play the Android version of Minecraft Education natively on Linux
+Exec=edulauncher
+Icon=io.github.sircreativezhlm.EduLauncher
+Terminal=false
+Categories=Game;
+Keywords=minecraft;education;edu;mcee;
+StartupWMClass=mcpelauncher-client
+Actions=Import;SignOut;
+
+[Desktop Action Import]
+Name=Install or update from APK...
+Exec=edulauncher import
+
+[Desktop Action SignOut]
+Name=Sign out of school account
+Exec=edulauncher signout

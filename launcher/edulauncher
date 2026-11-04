@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# EduLauncher: runs the Android build of Minecraft Education natively on Linux.
+#
+#   edulauncher                 start the game (asks for the APK the first time)
+#   edulauncher import [file]   install or update the game from an .apk/.apks/.xapk/.apkm
+#   edulauncher signout         forget the saved school account
+#   edulauncher info            show installed version and paths
+#   edulauncher -- <args>       start the game passing extra mcpelauncher-client flags
+set -euo pipefail
+shopt -s globstar nullglob
+
+APP_ID="io.github.sircreativezhlm.EduLauncher"
+DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/edulauncher"
+GAME_DIR="$DATA_ROOT/game"
+PROFILE_DIR="$DATA_ROOT/profile"
+
+SELF_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+LIBEXEC_DIR="${EDULAUNCHER_LIBEXEC:-}"
+if [[ -z "$LIBEXEC_DIR" ]]; then
+    for d in "$SELF_DIR" "$SELF_DIR/../lib/edulauncher/bin" /usr/lib/edulauncher/bin /app/lib/edulauncher/bin; do
+        if [[ -x "$d/mcpelauncher-client" ]]; then LIBEXEC_DIR="$(cd "$d" && pwd)"; break; fi
+    done
+fi
+
+case "$(uname -m)" in
+    x86_64|amd64) ABI="x86_64" ;;
+    aarch64|arm64) ABI="arm64-v8a" ;;
+    i?86) ABI="x86" ;;
+    armv7*) ABI="armeabi-v7a" ;;
+    *) ABI="$(uname -m)" ;;
+esac
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+say() {
+    echo "$1" >&2
+    # Only show a dialog when not started from a terminal
+    if [[ ! -t 2 ]]; then
+        if [[ -x "$LIBEXEC_DIR/edulauncher-signin" ]]; then "$LIBEXEC_DIR/edulauncher-signin" --message "$1" || true
+        elif have zenity; then zenity --info --title="Minecraft Education" --text="$1" || true
+        elif have kdialog; then kdialog --title "Minecraft Education" --msgbox "$1" || true
+        fi
+    fi
+}
+
+die() { say "$1"; exit 1; }
+
+pick_apk() {
+    if [[ -x "$LIBEXEC_DIR/edulauncher-signin" ]]; then "$LIBEXEC_DIR/edulauncher-signin" --pick-apk
+    elif have zenity; then zenity --file-selection --title="Choose the Minecraft Education APK" --file-filter="Android app | *.apk *.apks *.xapk *.apkm *.zip"
+    elif have kdialog; then kdialog --getopenfilename "$HOME" "*.apk *.apks *.xapk *.apkm *.zip"
+    else return 1
+    fi
+}
+
+# Extracts the parts the launcher needs (manifest, assets, native libs) from one APK
+extract_apk() {
+    local apk="$1" dest="$2"
+    unzip -qo "$apk" 'AndroidManifest.xml' 'assets/*' "lib/$ABI/*" -d "$dest" 2>/dev/null || [[ $? -eq 11 ]] || return 1
+}
+
+import_game() {
+    local src="$1"
+    [[ -f "$src" ]] || die "File not found: $src"
+    have unzip || die "unzip is required to import the game."
+
+    local work; work="$(mktemp -d "${TMPDIR:-/tmp}/edulauncher.XXXXXX")"
+    trap 'rm -rf "$work"' RETURN
+    local stage="$work/game"
+    mkdir -p "$stage"
+
+    if unzip -Z1 "$src" 2>/dev/null | grep -qE '\.apk$'; then
+        # Split bundle (.apks/.xapk/.apkm): base.apk + split_config.<abi>.apk + asset packs
+        echo "Unpacking app bundle..."
+        mkdir -p "$work/bundle"
+        unzip -qo "$src" '*.apk' -d "$work/bundle"
+        local base=""
+        for apk in "$work/bundle"/**/*.apk; do
+            [[ -f "$apk" ]] || continue
+            if [[ "$(basename "$apk")" == "base.apk" ]] || unzip -Z1 "$apk" 2>/dev/null | grep -qx 'classes.dex'; then base="$apk"; fi
+        done
+        [[ -n "$base" ]] || die "This bundle has no base APK."
+        extract_apk "$base" "$stage" || die "Could not read $base"
+        for apk in "$work/bundle"/**/*.apk; do
+            [[ -f "$apk" && "$apk" != "$base" ]] || continue
+            # Splits carry their own manifest, keep the one from the base APK
+            mv "$stage/AndroidManifest.xml" "$work/manifest.keep"
+            extract_apk "$apk" "$stage" || true
+            mv -f "$work/manifest.keep" "$stage/AndroidManifest.xml"
+        done
+    else
+        echo "Unpacking APK..."
+        extract_apk "$src" "$stage" || die "Could not read $src. Is it an APK file?"
+    fi
+
+    if [[ ! -f "$stage/lib/$ABI/libminecraftpe.so" ]]; then
+        local found
+        found="$( { unzip -Z1 "$src"; for a in "$work"/bundle/**/*.apk; do unzip -Z1 "$a"; done; } 2>/dev/null \
+            | grep -oE '^lib/[^/]+' | sed 's|^lib/||' | sort -u | tr '\n' ' ' || true)"
+        die "This APK has no $ABI build of the game (it contains: ${found:-nothing}).
+Minecraft Education needs the $ABI version, the one Google Play gives Chromebooks."
+    fi
+    if ! grep -aq "minecraftedu" "$stage/AndroidManifest.xml" 2>/dev/null; then
+        echo "Warning: this does not look like Minecraft Education (com.mojang.minecraftedu)." >&2
+    fi
+
+    mkdir -p "$DATA_ROOT"
+    rm -rf "$GAME_DIR.old"
+    [[ -d "$GAME_DIR" ]] && mv "$GAME_DIR" "$GAME_DIR.old"
+    mv "$stage" "$GAME_DIR"
+    rm -rf "$GAME_DIR.old"
+    echo "Installed Minecraft Education into $GAME_DIR"
+}
+
+need_client() {
+    [[ -n "$LIBEXEC_DIR" ]] || die "mcpelauncher-client was not found. Set EDULAUNCHER_LIBEXEC to the folder that has it."
+}
+
+run_game() {
+    need_client
+    if [[ ! -f "$GAME_DIR/lib/$ABI/libminecraftpe.so" ]]; then
+        local apk
+        if ! apk="$(pick_apk)" || [[ -z "$apk" ]]; then
+            die "Minecraft Education is not installed yet. Run: edulauncher import <MinecraftEducation.apk>"
+        fi
+        import_game "$apk"
+    fi
+    mkdir -p "$PROFILE_DIR"
+    export PATH="$LIBEXEC_DIR:$PATH"
+    exec "$LIBEXEC_DIR/mcpelauncher-client" -dg "$GAME_DIR/" -dd "$PROFILE_DIR/" "$@"
+}
+
+case "${1:-}" in
+    import)
+        if [[ $# -ge 2 ]]; then
+            import_game "$2"
+        else
+            apk="$(pick_apk)" && [[ -n "$apk" ]] || die "Usage: edulauncher import <file.apk|.apks|.xapk|.apkm>"
+            import_game "$apk"
+            say "Minecraft Education is installed. Start it from your app menu."
+        fi ;;
+    signout|sign-out|logout)
+        rm -f "$PROFILE_DIR/edu_auth.json"
+        rm -rf "$DATA_ROOT/signin"
+        echo "Signed out." ;;
+    info)
+        echo "App id:    $APP_ID"
+        echo "ABI:       $ABI"
+        echo "Launcher:  ${LIBEXEC_DIR:-not found}"
+        echo "Game dir:  $GAME_DIR"
+        echo "Profile:   $PROFILE_DIR"
+        if [[ -f "$GAME_DIR/lib/$ABI/libminecraftpe.so" ]]; then echo "Game:      installed"; else echo "Game:      not installed"; fi
+        if [[ -f "$PROFILE_DIR/edu_auth.json" ]]; then echo "Account:   signed in"; else echo "Account:   signed out"; fi ;;
+    -h|--help|help)
+        sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    --)
+        shift; run_game "$@" ;;
+    *)
+        run_game "$@" ;;
+esac

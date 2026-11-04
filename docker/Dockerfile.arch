@@ -1,0 +1,10 @@
+# Build environment matching an up to date Arch Linux install
+FROM --platform=linux/amd64 archlinux:base-devel
+RUN sed -i "/^\[options\]/a DisableSandbox" /etc/pacman.conf && pacman -Syu --noconfirm --needed git cmake ninja clang lld \
+        curl openssl zlib libpng libx11 libxi libxtst libxrandr libxcursor libxinerama libxkbcommon \
+        libevdev libpulse mesa wayland wayland-protocols libdecor \
+        qt6-base qt6-webengine qt6-serialport unzip nlohmann-json \
+        file patchelf desktop-file-utils squashfs-tools \
+    && pacman -Scc --noconfirm
+ENV CC=clang CXX=clang++
+WORKDIR /src

@@ -1,0 +1,845 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5c50f36..ea3d03d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -7,9 +7,12 @@ find_package(CURL REQUIRED)
+ git_commit_hash(${CMAKE_CURRENT_SOURCE_DIR} CLIENT_GIT_COMMIT_HASH)
+ configure_file(src/build_info.h.in ${CMAKE_CURRENT_BINARY_DIR}/build_info/build_info.h)
+ 
+-add_executable(mcpelauncher-client src/main.cpp src/main.h src/window_callbacks.cpp src/window_callbacks.h src/xbox_live_helper.cpp src/xbox_live_helper.h src/splitscreen_patch.cpp src/splitscreen_patch.h src/strafe_sprint_patch.cpp src/strafe_sprint_patch.h src/fake_swappygl.cpp src/fake_swappygl.h src/cll_upload_auth_step.cpp src/cll_upload_auth_step.h src/gl_core_patch.cpp src/gl_core_patch.h src/hbui_patch.cpp src/hbui_patch.h src/utf8_util.h src/shader_error_patch.cpp src/shader_error_patch.h src/jni/jni_descriptors.cpp src/jni/java_types.h src/jni/main_activity.cpp src/jni/main_activity.h src/jni/asset_manager.cpp src/jni/asset_manager.h src/jni/playfab.cpp src/jni/playfab.h src/jni/store.cpp src/jni/store.h src/jni/cert_manager.cpp src/jni/cert_manager.h src/jni/http_stub.cpp src/jni/http_stub.h src/jni/package_source.cpp src/jni/package_source.h src/jni/jni_support.h src/jni/jni_support.cpp src/jni/fmod.h src/jni/fmod.cpp src/fake_looper.cpp src/fake_looper.h src/fake_window.cpp src/fake_window.h src/fake_assetmanager.cpp src/fake_assetmanager.h src/fake_egl.cpp src/fake_egl.h src/fake_inputqueue.cpp src/fake_inputqueue.h src/symbols.cpp src/symbols.h src/text_input_handler.cpp src/text_input_handler.h src/jni/xbox_live.cpp src/jni/xbox_live.h src/core_patches.cpp src/core_patches.h  src/thread_mover.cpp src/thread_mover.h src/jni/lib_http_client.cpp src/jni/lib_http_client.h src/jni/lib_http_client_websocket.cpp src/jni/lib_http_client_websocket.h src/jni/accounts.cpp src/jni/accounts.h src/jni/arrays.cpp src/jni/arrays.h src/jni/jbase64.cpp src/jni/jbase64.h src/jni/locale.cpp src/jni/locale.h src/jni/securerandom.cpp src/jni/securerandom.h src/jni/signature.cpp src/jni/signature.h src/jni/uuid.cpp src/jni/uuid.h src/jni/webview.cpp src/jni/webview.h src/util.cpp src/util.h src/xal_webview_factory.cpp src/xal_webview_factory.h src/xal_webview.h src/settings.cpp src/settings.h )
++add_executable(mcpelauncher-client src/main.cpp src/main.h src/window_callbacks.cpp src/window_callbacks.h src/xbox_live_helper.cpp src/xbox_live_helper.h src/splitscreen_patch.cpp src/splitscreen_patch.h src/strafe_sprint_patch.cpp src/strafe_sprint_patch.h src/fake_swappygl.cpp src/fake_swappygl.h src/cll_upload_auth_step.cpp src/cll_upload_auth_step.h src/gl_core_patch.cpp src/gl_core_patch.h src/hbui_patch.cpp src/hbui_patch.h src/utf8_util.h src/shader_error_patch.cpp src/shader_error_patch.h src/jni/jni_descriptors.cpp src/jni/java_types.h src/jni/main_activity.cpp src/jni/main_activity.h src/jni/asset_manager.cpp src/jni/asset_manager.h src/jni/playfab.cpp src/jni/playfab.h src/jni/store.cpp src/jni/store.h src/jni/cert_manager.cpp src/jni/cert_manager.h src/jni/http_stub.cpp src/jni/http_stub.h src/jni/package_source.cpp src/jni/package_source.h src/jni/jni_support.h src/jni/jni_support.cpp src/jni/fmod.h src/jni/fmod.cpp src/fake_looper.cpp src/fake_looper.h src/fake_window.cpp src/fake_window.h src/fake_assetmanager.cpp src/fake_assetmanager.h src/fake_egl.cpp src/fake_egl.h src/fake_inputqueue.cpp src/fake_inputqueue.h src/symbols.cpp src/symbols.h src/text_input_handler.cpp src/text_input_handler.h src/jni/xbox_live.cpp src/jni/xbox_live.h src/core_patches.cpp src/core_patches.h  src/thread_mover.cpp src/thread_mover.h src/jni/lib_http_client.cpp src/jni/lib_http_client.h src/jni/lib_http_client_websocket.cpp src/jni/lib_http_client_websocket.h src/jni/accounts.cpp src/jni/accounts.h src/jni/arrays.cpp src/jni/arrays.h src/jni/jbase64.cpp src/jni/jbase64.h src/jni/locale.cpp src/jni/locale.h src/jni/securerandom.cpp src/jni/securerandom.h src/jni/signature.cpp src/jni/signature.h src/jni/uuid.cpp src/jni/uuid.h src/jni/webview.cpp src/jni/webview.h src/util.cpp src/util.h src/xal_webview_factory.cpp src/xal_webview_factory.h src/xal_webview.h src/settings.cpp src/settings.h src/edu/edu_auth.cpp src/edu/edu_auth.h src/edu/edu_support.cpp src/edu/edu_support.h )
+ target_link_libraries(mcpelauncher-client logger properties-parser mcpelauncher-core gamewindow filepicker msa-daemon-client daemon-server-utils cll-telemetry argparser baron android-support-headers libc-shim mcpelauncher-apkinfo ${CURL_LIBRARIES})
+ target_include_directories(mcpelauncher-client PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/build_info/ ${CURL_INCLUDE_DIRS})
++target_link_libraries(mcpelauncher-client nlohmann_json file-util)
++set(MCEE_PACKAGE_NAME "com.mojang.minecraftedu" CACHE STRING "Android package name reported to the game")
++target_compile_definitions(mcpelauncher-client PRIVATE MCEE_PACKAGE_NAME="${MCEE_PACKAGE_NAME}")
+ 
+ option(NO_OPENSSL "disable openssl code" OFF)
+ if (NO_OPENSSL)
+diff --git a/src/edu/edu_auth.cpp b/src/edu/edu_auth.cpp
+new file mode 100644
+index 0000000..f3ffd58
+--- /dev/null
++++ b/src/edu/edu_auth.cpp
+@@ -0,0 +1,322 @@
++#include "edu_auth.h"
++
++#include <EnvPathUtil.h>
++#include <curl/curl.h>
++#include <log.h>
++#include <mcpelauncher/path_helper.h>
++#include <nlohmann/json.hpp>
++#include <openssl/rand.h>
++#include <openssl/sha.h>
++
++#include <chrono>
++#include <cstdlib>
++#include <fstream>
++#include <iostream>
++#include <stdexcept>
++#include <sys/stat.h>
++#include <sys/wait.h>
++#include <unistd.h>
++#include <vector>
++
++static long long nowSeconds() {
++    return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
++}
++
++static std::string base64Url(unsigned char const* data, size_t len) {
++    static const char* tbl = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
++    std::string out;
++    size_t i = 0;
++    for(; i + 2 < len; i += 3) {
++        unsigned v = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
++        out += tbl[(v >> 18) & 63];
++        out += tbl[(v >> 12) & 63];
++        out += tbl[(v >> 6) & 63];
++        out += tbl[v & 63];
++    }
++    if(len - i == 1) {
++        unsigned v = data[i] << 16;
++        out += tbl[(v >> 18) & 63];
++        out += tbl[(v >> 12) & 63];
++    } else if(len - i == 2) {
++        unsigned v = (data[i] << 16) | (data[i + 1] << 8);
++        out += tbl[(v >> 18) & 63];
++        out += tbl[(v >> 12) & 63];
++        out += tbl[(v >> 6) & 63];
++    }
++    return out;
++}
++
++static std::string urlEncode(std::string const& s) {
++    std::string out;
++    char buf[4];
++    for(unsigned char c : s) {
++        if(isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
++            out += c;
++        } else {
++            snprintf(buf, sizeof(buf), "%%%02X", c);
++            out += buf;
++        }
++    }
++    return out;
++}
++
++static std::string urlDecode(std::string const& s) {
++    std::string out;
++    for(size_t i = 0; i < s.size(); i++) {
++        if(s[i] == '%' && i + 2 < s.size()) {
++            out += (char)std::stoi(s.substr(i + 1, 2), nullptr, 16);
++            i += 2;
++        } else if(s[i] == '+') {
++            out += ' ';
++        } else {
++            out += s[i];
++        }
++    }
++    return out;
++}
++
++static std::string queryParam(std::string const& url, std::string const& name) {
++    auto q = url.find_first_of("?#");
++    if(q == std::string::npos)
++        return {};
++    std::string rest = url.substr(q + 1);
++    size_t pos = 0;
++    while(pos <= rest.size()) {
++        auto end = rest.find_first_of("&#", pos);
++        if(end == std::string::npos)
++            end = rest.size();
++        auto part = rest.substr(pos, end - pos);
++        auto eq = part.find('=');
++        if(eq != std::string::npos && part.substr(0, eq) == name)
++            return urlDecode(part.substr(eq + 1));
++        pos = end + 1;
++    }
++    return {};
++}
++
++static size_t curlWrite(char* ptr, size_t size, size_t nmemb, void* userdata) {
++    ((std::string*)userdata)->append(ptr, size * nmemb);
++    return size * nmemb;
++}
++
++static std::string postForm(std::string const& url, std::string const& form, long& status) {
++    CURL* curl = curl_easy_init();
++    if(!curl)
++        throw std::runtime_error("Could not initialize curl");
++    std::string response;
++    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
++    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, form.c_str());
++    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)form.size());
++    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWrite);
++    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
++    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
++    auto ret = curl_easy_perform(curl);
++    status = 0;
++    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
++    curl_easy_cleanup(curl);
++    if(ret != CURLE_OK)
++        throw std::runtime_error(std::string("Network error while signing in: ") + curl_easy_strerror(ret));
++    return response;
++}
++
++// Runs argv without a shell and returns its stdout, or throws when it exits non-zero.
++static std::string runCapture(std::vector<std::string> const& argv) {
++    int out[2];
++    if(pipe(out) != 0)
++        throw std::runtime_error("pipe() failed");
++    pid_t pid = fork();
++    if(pid == 0) {
++        dup2(out[1], STDOUT_FILENO);
++        close(out[0]);
++        close(out[1]);
++        std::vector<char*> cargv;
++        for(auto& a : argv)
++            cargv.push_back((char*)a.c_str());
++        cargv.push_back(nullptr);
++        execvp(cargv[0], cargv.data());
++        _exit(127);
++    }
++    close(out[1]);
++    if(pid < 0) {
++        close(out[0]);
++        throw std::runtime_error("fork() failed");
++    }
++    std::string result;
++    char buf[4096];
++    ssize_t r;
++    while((r = read(out[0], buf, sizeof(buf))) > 0)
++        result.append(buf, r);
++    close(out[0]);
++    int status = 0;
++    waitpid(pid, &status, 0);
++    if(!WIFEXITED(status) || WEXITSTATUS(status) != 0)
++        throw std::runtime_error(argv[0] + " exited with status " + std::to_string(WEXITSTATUS(status)));
++    while(!result.empty() && (result.back() == '\n' || result.back() == '\r'))
++        result.pop_back();
++    return result;
++}
++
++EduAuth& EduAuth::instance() {
++    static EduAuth auth;
++    return auth;
++}
++
++std::string EduAuth::cachePath() {
++    return PathHelper::getPrimaryDataDirectory() + "edu_auth.json";
++}
++
++void EduAuth::load() {
++    if(loaded)
++        return;
++    loaded = true;
++    std::ifstream f(cachePath());
++    if(!f)
++        return;
++    try {
++        auto js = nlohmann::json::parse(f);
++        refreshToken = js.value("refresh_token", "");
++        accessToken = js.value("access_token", "");
++        expiresAt = js.value("expires_at", 0LL);
++    } catch(std::exception& e) {
++        Log::warn("EduAuth", "Ignoring unreadable token cache: %s", e.what());
++    }
++}
++
++void EduAuth::save() {
++    auto path = cachePath();
++    {
++        std::ofstream f(path, std::ios::trunc);
++        f << nlohmann::json{{"refresh_token", refreshToken}, {"access_token", accessToken}, {"expires_at", expiresAt}}.dump();
++    }
++    chmod(path.c_str(), 0600);
++}
++
++void EduAuth::applyTokenResponse(std::string const& body) {
++    auto js = nlohmann::json::parse(body);
++    accessToken = js.at("access_token").get<std::string>();
++    if(js.contains("refresh_token"))
++        refreshToken = js["refresh_token"].get<std::string>();
++    expiresAt = nowSeconds() + js.value("expires_in", 3600LL);
++    save();
++}
++
++void EduAuth::redeemRefreshToken() {
++    long status;
++    auto body = postForm(std::string(AUTHORITY) + "token",
++                         "client_id=" + urlEncode(CLIENT_ID) + "&grant_type=refresh_token&refresh_token=" + urlEncode(refreshToken) + "&scope=" + urlEncode(SCOPE),
++                         status);
++    if(status != 200) {
++        Log::warn("EduAuth", "Refreshing the sign-in failed (%ld): %s", status, body.c_str());
++        refreshToken.clear();
++        save();
++        throw std::runtime_error("Saved sign-in expired");
++    }
++    applyTokenResponse(body);
++}
++
++std::string EduAuth::showSignInWindow(std::string const& url) {
++    // 1. Our own Qt WebEngine window which returns the final redirect url on stdout
++    std::string signin;
++    if(EnvPathUtil::findInPath("edulauncher-signin", signin, EnvPathUtil::getAppDir().c_str()) || EnvPathUtil::findInPath("edulauncher-signin", signin)) {
++        Log::info("EduAuth", "Opening sign-in window");
++        try {
++            return runCapture({signin, url, REDIRECT_URI});
++        } catch(std::exception& e) {
++            Log::info("EduAuth", "Sign-in window closed: %s", e.what());
++            return {};
++        }
++    }
++    // 2. System browser plus a dialog to paste the final url
++    Log::warn("EduAuth", "edulauncher-signin not found, using the system browser");
++    std::string tool;
++    if(EnvPathUtil::findInPath("xdg-open", tool))
++        try {
++            runCapture({tool, url});
++        } catch(...) {
++        }
++    std::string text = "Sign in with your school account in the browser window that just opened.\n"
++                       "When the page goes blank, copy the full address from the address bar and paste it here.";
++    if(EnvPathUtil::findInPath("zenity", tool))
++        return runCapture({tool, "--entry", "--title=Minecraft Education sign-in", "--width=600", "--text=" + text});
++    if(EnvPathUtil::findInPath("kdialog", tool))
++        return runCapture({tool, "--title", "Minecraft Education sign-in", "--inputbox", text});
++    // 3. Terminal
++    std::cout << "Open this address in a web browser and sign in:\n" << url << "\n" << text << "\n> " << std::flush;
++    std::string line;
++    std::getline(std::cin, line);
++    return line;
++}
++
++void EduAuth::interactiveSignIn() {
++    unsigned char verifierBytes[32];
++    RAND_bytes(verifierBytes, sizeof(verifierBytes));
++    auto verifier = base64Url(verifierBytes, sizeof(verifierBytes));
++    unsigned char hash[SHA256_DIGEST_LENGTH];
++    SHA256((unsigned char const*)verifier.data(), verifier.size(), hash);
++    auto challenge = base64Url(hash, sizeof(hash));
++    unsigned char stateBytes[16];
++    RAND_bytes(stateBytes, sizeof(stateBytes));
++    auto state = base64Url(stateBytes, sizeof(stateBytes));
++
++    auto url = std::string(AUTHORITY) + "authorize?client_id=" + urlEncode(CLIENT_ID) + "&response_type=code&redirect_uri=" + urlEncode(REDIRECT_URI) +
++               "&response_mode=query&scope=" + urlEncode(SCOPE) + "&code_challenge=" + challenge + "&code_challenge_method=S256&state=" + state +
++               "&prompt=select_account";
++
++    auto result = showSignInWindow(url);
++    if(result.empty())
++        throw std::runtime_error("Sign-in was cancelled");
++    auto error = queryParam(result, "error");
++    if(!error.empty())
++        throw std::runtime_error("Microsoft sign-in failed: " + error + " " + queryParam(result, "error_description"));
++    if(queryParam(result, "state") != state)
++        throw std::runtime_error("Sign-in response did not match the request");
++    auto code = queryParam(result, "code");
++    if(code.empty())
++        throw std::runtime_error("Sign-in did not return an authorization code");
++
++    long status;
++    auto body = postForm(std::string(AUTHORITY) + "token",
++                         "client_id=" + urlEncode(CLIENT_ID) + "&grant_type=authorization_code&code=" + urlEncode(code) + "&redirect_uri=" + urlEncode(REDIRECT_URI) +
++                             "&code_verifier=" + verifier + "&scope=" + urlEncode(SCOPE),
++                         status);
++    if(status != 200) {
++        Log::error("EduAuth", "Token request failed (%ld): %s", status, body.c_str());
++        std::string description;
++        try {
++            description = nlohmann::json::parse(body).value("error_description", "");
++        } catch(...) {
++        }
++        throw std::runtime_error("Microsoft rejected the sign-in. " + description);
++    }
++    applyTokenResponse(body);
++}
++
++std::string EduAuth::acquireToken(bool allowInteractive) {
++    std::lock_guard<std::mutex> lock(mutex);
++    if(auto env = getenv("MCEE_ACCESS_TOKEN"))
++        return env;
++    load();
++    if(!accessToken.empty() && expiresAt - 300 > nowSeconds())
++        return accessToken;
++    if(!refreshToken.empty()) {
++        try {
++            redeemRefreshToken();
++            return accessToken;
++        } catch(std::exception& e) {
++            Log::warn("EduAuth", "%s", e.what());
++        }
++    }
++    if(!allowInteractive)
++        throw std::runtime_error("Not signed in");
++    interactiveSignIn();
++    return accessToken;
++}
++
++void EduAuth::signOut() {
++    std::lock_guard<std::mutex> lock(mutex);
++    loaded = true;
++    accessToken.clear();
++    refreshToken.clear();
++    expiresAt = 0;
++    unlink(cachePath().c_str());
++}
+diff --git a/src/edu/edu_auth.h b/src/edu/edu_auth.h
+new file mode 100644
+index 0000000..90fb2d0
+--- /dev/null
++++ b/src/edu/edu_auth.h
+@@ -0,0 +1,39 @@
++#pragma once
++
++#include <mutex>
++#include <string>
++
++// Microsoft Entra ID (Azure AD) sign-in for Minecraft Education.
++// The game asks ActiveDirectorySignIn for an access token for the
++// meeservices.minecraft.net resource and exchanges it with
++// login.minecrafteduservices.com itself.
++class EduAuth {
++public:
++    static constexpr const char* CLIENT_ID = "b36b1432-1a1c-4c82-9b76-24de1cab42f2";
++    static constexpr const char* AUTHORITY = "https://login.microsoftonline.com/common/oauth2/v2.0/";
++    static constexpr const char* REDIRECT_URI = "https://login.microsoftonline.com/common/oauth2/nativeclient";
++    static constexpr const char* SCOPE = "https://meeservices.minecraft.net/.default offline_access openid profile";
++
++    static EduAuth& instance();
++
++    // Returns a valid access token, refreshing or asking the user to sign in when needed.
++    // Throws std::runtime_error with a user facing message on failure.
++    std::string acquireToken(bool allowInteractive);
++
++    void signOut();
++
++private:
++    std::mutex mutex;
++    std::string accessToken;
++    std::string refreshToken;
++    long long expiresAt = 0;
++    bool loaded = false;
++
++    std::string cachePath();
++    void load();
++    void save();
++    void applyTokenResponse(std::string const& body);
++    void redeemRefreshToken();
++    void interactiveSignIn();
++    std::string showSignInWindow(std::string const& url);
++};
+diff --git a/src/edu/edu_support.cpp b/src/edu/edu_support.cpp
+new file mode 100644
+index 0000000..7d75c2d
+--- /dev/null
++++ b/src/edu/edu_support.cpp
+@@ -0,0 +1,139 @@
++#include "edu_support.h"
++#include "edu_auth.h"
++
++#include <log.h>
++#include <mcpelauncher/path_helper.h>
++#include <nlohmann/json.hpp>
++
++#include <chrono>
++#include <cstdlib>
++#include <fstream>
++#include <mutex>
++#include <sys/stat.h>
++#include <thread>
++
++void ActiveDirectorySignIn::authenticate(std::shared_ptr<FakeJni::JString> arg, FakeJni::JInt flags) {
++    Log::info("EduAuth", "authenticate(%s, %d)", arg ? arg->asStdString().c_str() : "", (int)flags);
++    FakeJni::Jvm const* vm = &FakeJni::JniEnv::getCurrentEnv()->getVM();
++    auto self = std::static_pointer_cast<ActiveDirectorySignIn>(shared_from_this());
++    std::thread([vm, self]() {
++        try {
++            self->accessToken = EduAuth::instance().acquireToken(true);
++            self->lastError.clear();
++            Log::info("EduAuth", "Signed in");
++        } catch(std::exception& e) {
++            self->accessToken.clear();
++            self->lastError = e.what();
++            Log::error("EduAuth", "Sign-in failed: %s", e.what());
++        }
++        FakeJni::LocalFrame env(*vm);
++        auto cb = self->getClass().getMethod("()V", "nativeOnDataChanged");
++        if(cb) {
++            cb->invoke(env.getJniEnv(), self.get());
++        } else {
++            Log::error("EduAuth", "nativeOnDataChanged is not registered");
++        }
++    }).detach();
++}
++
++std::shared_ptr<FakeJni::JString> ActiveDirectorySignIn::getAccessToken() {
++    return std::make_shared<FakeJni::JString>(accessToken);
++}
++
++std::shared_ptr<FakeJni::JString> ActiveDirectorySignIn::getLastError() {
++    return std::make_shared<FakeJni::JString>(lastError);
++}
++
++namespace EduSupport {
++
++static std::mutex storageMutex;
++static nlohmann::json storage;
++static bool storageLoaded = false;
++
++static std::string storagePath() {
++    return PathHelper::getPrimaryDataDirectory() + "edu_secure_storage.json";
++}
++
++static void loadStorage() {
++    if(storageLoaded)
++        return;
++    storageLoaded = true;
++    storage = nlohmann::json::object();
++    std::ifstream f(storagePath());
++    if(f) {
++        try {
++            storage = nlohmann::json::parse(f);
++        } catch(...) {
++            storage = nlohmann::json::object();
++        }
++    }
++}
++
++std::string getSecureStorageKey(std::string const& key) {
++    std::lock_guard<std::mutex> lock(storageMutex);
++    loadStorage();
++    auto it = storage.find(key);
++    return it != storage.end() && it->is_string() ? it->get<std::string>() : std::string();
++}
++
++void setSecureStorageKey(std::string const& key, std::string const& value) {
++    std::lock_guard<std::mutex> lock(storageMutex);
++    loadStorage();
++    storage[key] = value;
++    auto path = storagePath();
++    {
++        std::ofstream f(path, std::ios::trunc);
++        f << storage.dump();
++    }
++    chmod(path.c_str(), 0600);
++}
++
++bool isEduServiceUrl(std::string const& url) {
++    auto scheme = url.find("://");
++    if(scheme == std::string::npos)
++        return false;
++    auto hostStart = scheme + 3;
++    auto host = url.substr(hostStart, url.find_first_of("/:?", hostStart) - hostStart);
++    static const std::string suffix = "minecrafteduservices.com";
++    return host.size() >= suffix.size() && host.compare(host.size() - suffix.size(), suffix.size(), suffix) == 0;
++}
++
++std::string rewriteRequestBody(std::string const& url, std::string const& body, size_t maxSize) {
++    nlohmann::json js;
++    try {
++        js = nlohmann::json::parse(body);
++    } catch(...) {
++        return body;
++    }
++    if(!js.is_object() || !js.contains("platform") || !js.contains("osVersion"))
++        return body;
++    auto envPlatform = getenv("MCEE_PLATFORM");
++    std::string platform = envPlatform ? envPlatform : "Nokia8(Android)(x64)";
++    Log::info("EduHttp", "Reporting platform %s instead of %s to %s", platform.c_str(), js["platform"].dump().c_str(), url.c_str());
++    js["platform"] = platform;
++    js["osVersion"] = "10.0.0";
++    js["platformCategory"] = "mobile";
++    js.erase("requestId");
++    js.erase("correlationVector");
++    auto out = js.dump();
++    if(maxSize) {
++        if(out.size() > maxSize) {
++            Log::warn("EduHttp", "Rewritten body does not fit the announced size, sending the original");
++            return body;
++        }
++        // Content-Length was already announced, trailing whitespace keeps the JSON valid
++        out.resize(maxSize, ' ');
++    }
++    return out;
++}
++
++void addGameHooks(std::vector<mcpelauncher_hook_t>& hooks) {
++    // The telemetry uploader crashes the game shortly after start without the Android services it expects
++    hooks.emplace_back(mcpelauncher_hook_t{"_ZN9Microsoft12Applications6Events15StorageObserver20handleRetrieveEventsERKNSt6__ndk110shared_ptrINS1_19EventsUploadContextEEE",
++                                           (void*)+[]() {
++                                               for(;;)
++                                                   std::this_thread::sleep_for(std::chrono::hours(24));
++                                           }});
++}
++
++}  // namespace EduSupport
+diff --git a/src/edu/edu_support.h b/src/edu/edu_support.h
+new file mode 100644
+index 0000000..ce3d334
+--- /dev/null
++++ b/src/edu/edu_support.h
+@@ -0,0 +1,40 @@
++#pragma once
++
++#include <fake-jni/fake-jni.h>
++#include <mcpelauncher/linker.h>
++#include <string>
++#include <vector>
++
++// Package name reported to the game through Context.getPackageName()
++#ifndef MCEE_PACKAGE_NAME
++#define MCEE_PACKAGE_NAME "com.mojang.minecraftedu"
++#endif
++
++// Java side of the Education login, the game calls authenticate() and waits for
++// nativeOnDataChanged before reading getAccessToken()/getLastError().
++class ActiveDirectorySignIn : public FakeJni::JObject {
++    std::string lastError;
++    std::string accessToken;
++
++public:
++    DEFINE_CLASS_NAME("com/mojang/minecraftpe/ActiveDirectorySignIn")
++
++    void authenticate(std::shared_ptr<FakeJni::JString> arg, FakeJni::JInt flags);
++    std::shared_ptr<FakeJni::JString> getAccessToken();
++    std::shared_ptr<FakeJni::JString> getLastError();
++};
++
++namespace EduSupport {
++
++// MainActivity.getSecureStorageKey / setSecureStorageKey, persisted in the data dir
++std::string getSecureStorageKey(std::string const& key);
++void setSecureStorageKey(std::string const& key, std::string const& value);
++
++// Education sign-in requests are rejected for the "Linux()" platform, report an Android device instead.
++bool isEduServiceUrl(std::string const& url);
++// Returns the rewritten body, keeps it at most maxSize bytes (padded with spaces) when maxSize != 0.
++std::string rewriteRequestBody(std::string const& url, std::string const& body, size_t maxSize = 0);
++
++void addGameHooks(std::vector<mcpelauncher_hook_t>& hooks);
++
++}  // namespace EduSupport
+diff --git a/src/jni/jni_descriptors.cpp b/src/jni/jni_descriptors.cpp
+index ebf8903..b1eb66c 100644
+--- a/src/jni/jni_descriptors.cpp
++++ b/src/jni/jni_descriptors.cpp
+@@ -7,6 +7,7 @@
+ #include "package_source.h"
+ #include "http_stub.h"
+ #include "fmod.h"
++#include "../edu/edu_support.h"
+ #ifdef HAVE_PULSEAUDIO
+ #include "pulseaudio.h"
+ #endif
+@@ -119,7 +120,8 @@ BEGIN_NATIVE_DESCRIPTOR(MainActivity){Constructor<MainActivity>{}},
+     {Function<&MainActivity::initializeXboxLive>{}, "initializeXboxLive"},
+     {Function<&MainActivity::initializeXboxLive2>{}, "initializeXboxLive"},
+     {Function<&MainActivity::initializeLibHttpClient>{}, "initializeLibHttpClient"},
+-    // {Function<&MainActivity::getSecureStorageKey> {}, "getSecureStorageKey"},
++    {Function<&MainActivity::getSecureStorageKey>{}, "getSecureStorageKey"},
++    {Function<&MainActivity::setSecureStorageKey>{}, "setSecureStorageKey"},
+     {Function<&MainActivity::lockCursor>{}, "lockCursor"},
+     {Function<&MainActivity::unlockCursor>{}, "unlockCursor"},
+     {Function<&MainActivity::getImageData>{}, "getImageData"},
+@@ -185,6 +187,12 @@ END_NATIVE_DESCRIPTOR
+ BEGIN_NATIVE_DESCRIPTOR(PlayIntegrity)
+ END_NATIVE_DESCRIPTOR
+ 
++BEGIN_NATIVE_DESCRIPTOR(ActiveDirectorySignIn){Constructor<ActiveDirectorySignIn>{}},
++    {Function<&ActiveDirectorySignIn::authenticate>{}, "authenticate"},
++    {Function<&ActiveDirectorySignIn::getAccessToken>{}, "getAccessToken"},
++    {Function<&ActiveDirectorySignIn::getLastError>{}, "getLastError"},
++    END_NATIVE_DESCRIPTOR
++
+ BEGIN_NATIVE_DESCRIPTOR(StoreListener)
+ END_NATIVE_DESCRIPTOR
+ 
+diff --git a/src/jni/jni_support.cpp b/src/jni/jni_support.cpp
+index 6e6d557..99e8434 100644
+--- a/src/jni/jni_support.cpp
++++ b/src/jni/jni_support.cpp
+@@ -12,6 +12,7 @@
+ #include "package_source.h"
+ #include "../xbox_live_helper.h"
+ #include "http_stub.h"
++#include "../edu/edu_support.h"
+ #ifdef HAVE_PULSEAUDIO
+ #include "pulseaudio.h"
+ #endif
+@@ -61,6 +62,7 @@ void JniSupport::registerJniClasses() {
+     vm.registerClass<NativeActivity>();
+     vm.registerClass<NetworkMonitor>();
+     vm.registerClass<MainActivity>();
++    vm.registerClass<ActiveDirectorySignIn>();
+     vm.registerClass<AccountManager>();
+     vm.registerClass<Account>();
+ 
+@@ -172,6 +174,10 @@ void JniSupport::registerMinecraftNatives(void* (*symResolver)(const char*)) {
+                                                         {"nativePlayIntegrityComplete", "()V"},
+                                                     },
+                     symResolver);
++    registerNatives(ActiveDirectorySignIn::getDescriptor(), {
++                                                                {"nativeOnDataChanged", "()V"},
++                                                            },
++                    symResolver);
+ }
+ 
+ JniSupport::JniSupport() : textInput([this](std::string const& str) { return onSetTextboxText(str); }, [this](int pos) { return onCaretPosition(pos); })
+diff --git a/src/jni/lib_http_client.cpp b/src/jni/lib_http_client.cpp
+index 3017fb6..300794d 100644
+--- a/src/jni/lib_http_client.cpp
++++ b/src/jni/lib_http_client.cpp
+@@ -3,6 +3,7 @@
+ #include <log.h>
+ #include <curl/curl.h>
+ #include <thread>
++#include "../edu/edu_support.h"
+ 
+ using namespace std::placeholders;
+ 
+@@ -43,7 +44,8 @@ void HttpClientRequest::setHttpUrl(std::shared_ptr<FakeJni::JString> url) {
+ #ifndef NDEBUG
+     Log::trace("HttpClient", "URL: %s", url->asStdString().c_str());
+ #endif
+-    curl_easy_setopt(curl, CURLOPT_URL, url->asStdString().c_str());
++    this->url = url->asStdString();
++    curl_easy_setopt(curl, CURLOPT_URL, this->url.c_str());
+ }
+ 
+ void HttpClientRequest::setHttpMethodAndBody(std::shared_ptr<FakeJni::JString> method,
+@@ -61,6 +63,10 @@ void HttpClientRequest::setHttpMethodAndBody(std::shared_ptr<FakeJni::JString> m
+     }
+     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, HttpClientRequest::write_callback_wrapper_old);
+     this->body = body ? std::vector<char>((char *)body->getArray(), (char *)body->getArray() + body->getSize()) : std::vector<char>{};
++    if(this->body.size() && EduSupport::isEduServiceUrl(this->url)) {
++        auto rewritten = EduSupport::rewriteRequestBody(this->url, std::string(this->body.begin(), this->body.end()));
++        this->body.assign(rewritten.begin(), rewritten.end());
++    }
+     if(this->body.size()) {
+         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, this->body.data());
+         curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, this->body.size());
+@@ -102,6 +108,9 @@ void HttpClientRequest::setHttpMethodAndBody2(std::shared_ptr<FakeJni::JString>
+ 
+     if(contentLength > 0) {
+         this->inputStream = std::make_shared<NativeInputStream>(callHandle);
++        if(EduSupport::isEduServiceUrl(this->url)) {
++            this->inputStream->enableEduRewrite(this->url, contentLength);
++        }
+         curl_easy_setopt(curl, CURLOPT_READFUNCTION, read_callback);
+         curl_easy_setopt(curl, CURLOPT_READDATA, this->inputStream.get());
+         if (this->method == "POST") {
+@@ -268,7 +277,37 @@ size_t HttpClientRequest::header_callback(char *buffer, size_t size, size_t nite
+ NativeInputStream::NativeInputStream(FakeJni::JLong call_handle) : call_handle(call_handle) {
+ }
+ 
++void NativeInputStream::enableEduRewrite(std::string url, FakeJni::JLong length) {
++    eduUrl = std::move(url);
++    eduLength = length;
++}
++
+ size_t NativeInputStream::Read(void *buffer, size_t size) {
++    if(eduUrl.empty()) {
++        return ReadRaw(buffer, size);
++    }
++    if(!eduLoaded) {
++        eduLoaded = true;
++        std::vector<char> chunk(16384);
++        while((FakeJni::JLong)eduBody.size() < eduLength) {
++            auto r = ReadRaw(chunk.data(), chunk.size());
++            if(r == (size_t)-1 || r == 0) {
++                break;
++            }
++            eduBody.append(chunk.data(), r);
++        }
++        eduBody = EduSupport::rewriteRequestBody(eduUrl, eduBody, (size_t)eduLength);
++    }
++    if(eduPos >= eduBody.size()) {
++        return 0;
++    }
++    auto n = std::min(size, eduBody.size() - eduPos);
++    memcpy(buffer, eduBody.data() + eduPos, n);
++    eduPos += n;
++    return n;
++}
++
++size_t NativeInputStream::ReadRaw(void *buffer, size_t size) {
+     FakeJni::LocalFrame frame;
+     auto method = getClass().getMethod("(JJ[BJJ)I", "nativeRead");
+     auto buf = std::make_shared<FakeJni::JByteArray>((size_t)std::numeric_limits<jsize>::max() < size ? std::numeric_limits<jsize>::max() : (jsize)size);
+diff --git a/src/jni/lib_http_client.h b/src/jni/lib_http_client.h
+index d77583e..0e52d65 100644
+--- a/src/jni/lib_http_client.h
++++ b/src/jni/lib_http_client.h
+@@ -21,6 +21,17 @@ public:
+     DEFINE_CLASS_NAME("com/xbox/httpclient/HttpClientRequestBody/00024NativeInputStream")
+     NativeInputStream(FakeJni::JLong call_handle);
+     size_t Read(void *buffer, size_t size);
++
++    // Buffers the whole body and rewrites it before sending (Minecraft Education sign-in)
++    void enableEduRewrite(std::string url, FakeJni::JLong length);
++
++private:
++    size_t ReadRaw(void *buffer, size_t size);
++    std::string eduUrl;
++    FakeJni::JLong eduLength = 0;
++    std::string eduBody;
++    size_t eduPos = 0;
++    bool eduLoaded = false;
+ };
+ 
+ class HttpClientRequest : public FakeJni::JObject {
+@@ -59,6 +70,7 @@ private:
+     std::vector<ResponseHeader> headers;
+     std::vector<char> body;
+     std::string method;
++    std::string url;
+     FakeJni::JLong call_handle;
+ 
+     size_t write_callback_old(char *ptr, size_t size, size_t nmemb);
+diff --git a/src/jni/main_activity.cpp b/src/jni/main_activity.cpp
+index e9e636c..0955ec2 100644
+--- a/src/jni/main_activity.cpp
++++ b/src/jni/main_activity.cpp
+@@ -594,4 +594,11 @@ void TextInputConnection::setSoftKeyboardActive(FakeJni::JBoolean arg0, FakeJni:
+ 
+ void TextInputConnection::restartInput() {
+     
+-}
+\ No newline at end of file
++}
++std::shared_ptr<FakeJni::JString> MainActivity::getSecureStorageKey(std::shared_ptr<FakeJni::JString> key) {
++    return std::make_shared<FakeJni::JString>(EduSupport::getSecureStorageKey(key ? key->asStdString() : ""));
++}
++
++void MainActivity::setSecureStorageKey(std::shared_ptr<FakeJni::JString> key, std::shared_ptr<FakeJni::JString> value) {
++    EduSupport::setSecureStorageKey(key ? key->asStdString() : "", value ? value->asStdString() : "");
++}
+diff --git a/src/jni/main_activity.h b/src/jni/main_activity.h
+index 966b3ed..2c1df74 100644
+--- a/src/jni/main_activity.h
++++ b/src/jni/main_activity.h
+@@ -2,6 +2,7 @@
+ 
+ #include <fake-jni/fake-jni.h>
+ #include "java_types.h"
++#include "../edu/edu_support.h"
+ #include "../text_input_handler.h"
+ 
+ class BuildVersion : public FakeJni::JObject {
+@@ -48,7 +49,7 @@ public:
+     }
+ 
+     std::shared_ptr<FakeJni::JString> getPackageName() {
+-        return std::make_shared<FakeJni::JString>("com.mojang.minecraftpe");
++        return std::make_shared<FakeJni::JString>(MCEE_PACKAGE_NAME);
+     }
+ 
+     std::shared_ptr<PackageManager> getPackageManager() {
+@@ -98,7 +99,7 @@ public:
+     }
+ 
+     std::shared_ptr<FakeJni::JString> getInstallerPackageName() {
+-        return std::make_shared<FakeJni::JString>("com.mojang.minecraftpe");
++        return std::make_shared<FakeJni::JString>(MCEE_PACKAGE_NAME);
+     }
+ };
+ #include <fstream>
+@@ -311,6 +312,9 @@ public:
+ 
+     void startPlayIntegrityCheck();
+ 
++    std::shared_ptr<FakeJni::JString> getSecureStorageKey(std::shared_ptr<FakeJni::JString> key);
++    void setSecureStorageKey(std::shared_ptr<FakeJni::JString> key, std::shared_ptr<FakeJni::JString> value);
++
+     void openFile();
+     void saveFile(std::shared_ptr<FakeJni::JString>);
+ 
+diff --git a/src/main.cpp b/src/main.cpp
+index e24c581..9d615d8 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -9,6 +9,7 @@
+ #include <mcpelauncher/mod_loader.h>
+ #include "window_callbacks.h"
+ #include "fake_swappygl.h"
++#include "edu/edu_support.h"
+ #include "splitscreen_patch.h"
+ #include "gl_core_patch.h"
+ #include "xbox_live_helper.h"
+@@ -375,6 +376,7 @@ Hardware	: Qualcomm Technologies, Inc MSM8998
+     shim::rewrite_filesystem_access = {
+         // Minecraft 1.16.210 or older
+         {"/data/data/com.mojang.minecraftpe", PathHelper::getPrimaryDataDirectory()},
++        {"/data/data/" MCEE_PACKAGE_NAME, PathHelper::getPrimaryDataDirectory()},
+         // Minecraft 1.16.210 or later, absolute path on linux (source build ubuntu 20.04)
+         {std::string("/data/data") + PathHelper::getParentDir(PathHelper::getAppDir()) + "/proc/" + std::to_string(pid) + "/cmdline", PathHelper::getPrimaryDataDirectory()}};
+     if(argc >= 1 && argv != nullptr && argv[0] != nullptr && argv[0][0] != '\0') {
+@@ -502,6 +504,7 @@ Hardware	: Qualcomm Technologies, Inc MSM8998
+ 
+     std::vector<mcpelauncher_hook_t> mcpeHooks;
+     FakeSwappyGL::initHooks(mcpeHooks);
++    EduSupport::addGameHooks(mcpeHooks);
+ 
+     Log::trace("Launcher", "Loading Minecraft library");
+     static void* handle = MinecraftUtils::loadMinecraftLib(reinterpret_cast<void*>(&CorePatches::showMousePointer), reinterpret_cast<void*>(&CorePatches::hideMousePointer), reinterpret_cast<void*>(&CorePatches::setFullscreen), reinterpret_cast<void*>(&FakeLooper::onGameActivityClose), mcpeHooks);

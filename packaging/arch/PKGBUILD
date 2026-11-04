@@ -1,0 +1,31 @@
+# Maintainer: SirCreativeZHLM
+# Builds from the EduLauncher checkout this file lives in:
+#   cd packaging/arch && makepkg -si
+pkgname=edulauncher
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Run the Android version of Minecraft Education natively on Linux (mcpelauncher based)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/SirCreativeZHLM/EduLauncher"
+license=('GPL-3.0-only')
+depends=('curl' 'openssl' 'zlib' 'libpng' 'libx11' 'libxi' 'libxkbcommon' 'libevdev' 'libpulse'
+         'wayland' 'libdecor' 'mesa' 'qt6-base' 'qt6-webengine' 'unzip' 'bash')
+makedepends=('git' 'cmake' 'ninja' 'clang' 'lld' 'nlohmann-json')
+optdepends=('zenity: dialogs when the sign-in helper is missing'
+            'vulkan-icd-loader: Vulkan renderer')
+options=('!lto' '!debug')
+
+_root="$(cd "$startdir/../.." && pwd)"
+
+build() {
+    export CC=clang CXX=clang++
+    EDU_SRC="$srcdir/upstream" EDU_BUILD="$srcdir/build" \
+        "$_root/scripts/build.sh" --prefix /usr --destdir "$srcdir/stage"
+}
+
+package() {
+    cp -a "$srcdir/stage/." "$pkgdir/"
+    chmod -R u+rwX,go+rX,go-w "$pkgdir"
+    chmod 755 "$pkgdir/usr/bin/edulauncher" "$pkgdir"/usr/lib/edulauncher/bin/*
+    install -Dm644 "$_root/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
