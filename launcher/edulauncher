@@ -2,6 +2,7 @@
 # EduLauncher: runs the Android build of Minecraft Education natively on Linux.
 #
 #   edulauncher                 start the game (asks for the APK the first time)
+#   edulauncher download        download (or update) the game from Google Play
 #   edulauncher import [file]   install or update the game from an .apk/.apks/.xapk/.apkm
 #   edulauncher signout         forget the saved school account
 #   edulauncher info            show installed version and paths
@@ -29,6 +30,11 @@ case "${EDULAUNCHER_ABI:-$(uname -m)}" in
     armv7*) ABI="armeabi-v7a" ;;
     *) ABI="$(uname -m)" ;;
 esac
+
+SHARE_DIR=""
+for d in "$SELF_DIR/../share/edulauncher" /usr/share/edulauncher /app/share/edulauncher; do
+    if [[ -d "$d/play" ]]; then SHARE_DIR="$(cd "$d" && pwd)"; break; fi
+done
 
 # A game copy shipped inside the package, used until the user imports their own
 BUNDLED_GAME=""
@@ -68,7 +74,7 @@ extract_apk() {
 
 import_game() {
     local src="$1"
-    [[ -f "$src" ]] || die "File not found: $src"
+    [[ -e "$src" ]] || die "File not found: $src"
     have unzip || die "unzip is required to import the game."
 
     local work; work="$(mktemp -d "${TMPDIR:-/tmp}/edulauncher.XXXXXX")"
@@ -76,19 +82,25 @@ import_game() {
     local stage="$work/game"
     mkdir -p "$stage"
 
-    if unzip -Z1 "$src" 2>/dev/null | grep -qE '\.apk$'; then
+    local bundle="$work/bundle"
+    if [[ -d "$src" ]]; then
+        # Folder of split APKs, as downloaded from Google Play
+        bundle="$src"
+    elif unzip -Z1 "$src" 2>/dev/null | grep -qE '\.apk$'; then
         # Split bundle (.apks/.xapk/.apkm): base.apk + split_config.<abi>.apk + asset packs
         echo "Unpacking app bundle..."
-        mkdir -p "$work/bundle"
-        unzip -qo "$src" '*.apk' -d "$work/bundle"
+        mkdir -p "$bundle"
+        unzip -qo "$src" '*.apk' -d "$bundle"
+    fi
+    if [[ -d "$bundle" ]]; then
         local base=""
-        for apk in "$work/bundle"/**/*.apk; do
+        for apk in "$bundle"/**/*.apk; do
             [[ -f "$apk" ]] || continue
             if [[ "$(basename "$apk")" == "base.apk" ]] || unzip -Z1 "$apk" 2>/dev/null | grep -qx 'classes.dex'; then base="$apk"; fi
         done
         [[ -n "$base" ]] || die "This bundle has no base APK."
         extract_apk "$base" "$stage" || die "Could not read $base"
-        for apk in "$work/bundle"/**/*.apk; do
+        for apk in "$bundle"/**/*.apk; do
             [[ -f "$apk" && "$apk" != "$base" ]] || continue
             # Splits carry their own manifest, keep the one from the base APK
             mv "$stage/AndroidManifest.xml" "$work/manifest.keep"
@@ -102,7 +114,7 @@ import_game() {
 
     if [[ ! -f "$stage/lib/$ABI/libminecraftpe.so" ]]; then
         local found
-        found="$( { unzip -Z1 "$src"; for a in "$work"/bundle/**/*.apk; do unzip -Z1 "$a"; done; } 2>/dev/null \
+        found="$( { unzip -Z1 "$src"; for a in "$bundle"/**/*.apk; do unzip -Z1 "$a"; done; } 2>/dev/null \
             | grep -oE '^lib/[^/]+' | sed 's|^lib/||' | sort -u | tr '\n' ' ' || true)"
         die "This APK has no $ABI build of the game (it contains: ${found:-nothing}).
 Minecraft Education needs the $ABI version, the one Google Play gives Chromebooks."
@@ -121,6 +133,39 @@ Minecraft Education needs the $ABI version, the one Google Play gives Chromebook
     echo "Installed Minecraft Education into $GAME_DIR"
 }
 
+# Downloads the game for this CPU from Google Play with an anonymous account from Aurora Store's token dispenser
+download_game() {
+    local props="$SHARE_DIR/play/$ABI.properties"
+    [[ -f "$props" ]] || die "Downloading is not supported for $ABI."
+    local apkeep="$LIBEXEC_DIR/apkeep"
+    [[ -x "$apkeep" ]] || apkeep="$(command -v apkeep)" || die "apkeep is required to download the game."
+    have curl || die "curl is required to download the game."
+
+    echo "Getting an anonymous Google Play account..."
+    local json auth email token
+    json="$(awk 'index($0, "=") && $0 !~ /^[#\[]/ {
+            k = substr($0, 1, index($0, "=") - 1); v = substr($0, index($0, "=") + 1)
+            gsub(/\\/, "\\\\", v); gsub(/"/, "\\\"", v)
+            printf "%s\"%s\":\"%s\"", (n++ ? "," : "{"), k, v
+        } END { print "}" }' "$props")"
+    auth="$(curl -fsS --max-time 60 -X POST -H 'User-Agent: com.aurora.store-4.6.1-70' -H 'Content-Type: application/json' \
+        --data "$json" https://auroraoss.com/api/auth)" || die "Could not reach the Google Play account service. Check your internet connection."
+    email="$(sed -n 's/.*"email" *: *"\([^"]*\)".*/\1/p' <<<"$auth")"
+    token="$(sed -n 's/.*"authToken" *: *"\([^"]*\)".*/\1/p' <<<"$auth")"
+    [[ -n "$email" && -n "$token" ]] || die "The Google Play account service did not return an account. Try again later."
+
+    local work; work="$(mktemp -d "${TMPDIR:-/tmp}/edulauncher-dl.XXXXXX")"
+    echo "Downloading Minecraft Education from Google Play (about 1 GB)..."
+    "$apkeep" -a com.mojang.minecraftedu -d google-play -o "device=default,device_properties_file=$props,split_apk=true" \
+        -e "$email" --auth-token "$token" --accept-tos "$work" || true
+    if [[ ! -d "$work/com.mojang.minecraftedu" ]]; then
+        rm -rf "$work"
+        die "Google Play did not send the game. Try again later, or use: edulauncher import <file>"
+    fi
+    import_game "$work/com.mojang.minecraftedu"
+    rm -rf "$work"
+}
+
 need_client() {
     [[ -n "$LIBEXEC_DIR" ]] || die "mcpelauncher-client was not found. Set EDULAUNCHER_LIBEXEC to the folder that has it."
 }
@@ -128,11 +173,18 @@ need_client() {
 run_game() {
     need_client
     if [[ ! -f "$GAME_DIR/lib/$ABI/libminecraftpe.so" ]]; then
-        local apk
-        if ! apk="$(pick_apk)" || [[ -z "$apk" ]]; then
-            die "Minecraft Education is not installed yet. Run: edulauncher import <MinecraftEducation.apk>"
+        if [[ -n "$SHARE_DIR" ]]; then
+            say "Minecraft Education is not installed yet. It will now be downloaded from Google Play (about 1 GB), this takes a few minutes."
+            ( download_game ) || true
         fi
-        import_game "$apk"
+        if [[ ! -f "$DATA_ROOT/game/lib/$ABI/libminecraftpe.so" ]]; then
+            local apk
+            if ! apk="$(pick_apk)" || [[ -z "$apk" ]]; then
+                die "Minecraft Education is not installed yet. Run: edulauncher download"
+            fi
+            import_game "$apk"
+        fi
+        GAME_DIR="$DATA_ROOT/game"
     fi
     mkdir -p "$PROFILE_DIR"
     export PATH="$LIBEXEC_DIR:$PATH"
@@ -148,6 +200,8 @@ case "${1:-}" in
             import_game "$apk"
             say "Minecraft Education is installed. Start it from your app menu."
         fi ;;
+    download|update)
+        download_game ;;
     signout|sign-out|logout)
         rm -f "$PROFILE_DIR/edu_auth.json"
         rm -rf "$DATA_ROOT/signin"

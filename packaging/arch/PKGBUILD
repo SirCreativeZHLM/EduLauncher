@@ -4,7 +4,7 @@
 # To ship the game inside the package (private use only, never redistribute it):
 #   EDU_GAME_APK=/path/to/MinecraftEducation.apks makepkg -si
 pkgname=edulauncher
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Run the Android version of Minecraft Education natively on Linux (mcpelauncher based)"
 arch=('x86_64' 'aarch64')
@@ -16,6 +16,12 @@ makedepends=('git' 'cmake' 'ninja' 'clang' 'lld' 'nlohmann-json')
 optdepends=('zenity: dialogs when the sign-in helper is missing'
             'vulkan-icd-loader: Vulkan renderer')
 options=('!lto' '!debug')
+# apkeep (MIT, EFF) downloads the game from Google Play on first start
+_apkeep=1.1.0
+source_x86_64=("apkeep-$_apkeep-x86_64::https://github.com/EFForg/apkeep/releases/download/$_apkeep/apkeep-x86_64-unknown-linux-gnu")
+source_aarch64=("apkeep-$_apkeep-aarch64::https://github.com/EFForg/apkeep/releases/download/$_apkeep/apkeep-aarch64-unknown-linux-gnu")
+sha256sums_x86_64=('badd7ad9fa7d2f32abe01eaf33b7ff086361a95bbc000a33bf44b630d4bf2140')
+sha256sums_aarch64=('1a2e959842bbca4bc8db455b8132cc6f37534d70f2384409096268d8fc442ae8')
 
 _root="$(cd "$startdir/../.." && pwd)"
 
@@ -34,5 +40,6 @@ package() {
     cp -a "$srcdir/stage/." "$pkgdir/"
     chmod -R u+rwX,go+rX,go-w "$pkgdir"
     chmod 755 "$pkgdir/usr/bin/edulauncher" "$pkgdir"/usr/lib/edulauncher/bin/*
+    install -Dm755 "$srcdir/apkeep-$_apkeep-$CARCH" "$pkgdir/usr/lib/edulauncher/bin/apkeep"
     install -Dm644 "$_root/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

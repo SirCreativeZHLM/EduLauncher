@@ -41,8 +41,12 @@ those, see [Debugging](#debugging) and open an issue with the log.
 
 ## Getting the game
 
-You need the **x86_64** Android build of Minecraft Education (`com.mojang.minecraftedu`), the one Google Play
-installs on Chromebooks. EduLauncher does not download or distribute the game. Use your own copy. Any of these
+`edulauncher download` (also run automatically on first start) fetches the game for your CPU straight from Google
+Play, using [apkeep](https://github.com/EFForg/apkeep) and an anonymous account from Aurora Store's token dispenser.
+Nothing is downloaded from mirrors.
+
+To use a copy you already have instead, you need the **x86_64** Android build of Minecraft Education (`com.mojang.minecraftedu`), the one Google Play
+installs on Chromebooks. EduLauncher never ships the game itself. Any of these
 formats works:
 
 - `.apk` (single APK)
@@ -60,11 +64,16 @@ cd EduLauncher/packaging/arch
 makepkg -si
 ```
 
-### Prebuilt Arch package
+### Prebuilt Arch package (EndeavourOS, Manjaro, Arch)
+
+Download the `.pkg.tar.zst` from the [latest release](https://github.com/SirCreativeZHLM/EduLauncher/releases/tag/latest), then:
 
 ```sh
-sudo pacman -U edulauncher-0.1.0-1-x86_64.pkg.tar.zst
+sudo pacman -U edulauncher-*.pkg.tar.zst
+edulauncher
 ```
+
+The first start downloads the game from Google Play (about 1 GB). GitHub Actions builds the package on every push.
 
 ### Arch package with the game inside (private use)
 
@@ -99,7 +108,8 @@ Building takes about 15 to 30 minutes the first time. The result shows up in you
 ## Use
 
 ```sh
-edulauncher import MinecraftEducation.apks   # first time, and after every game update
+edulauncher download                          # get or update the game from Google Play
+edulauncher import MinecraftEducation.apks   # or use your own copy
 edulauncher                                   # play
 edulauncher signout                           # forget the school account
 edulauncher info                              # paths and state

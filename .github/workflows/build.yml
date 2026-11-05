@@ -1,0 +1,85 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  arch-package:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm --needed git cmake ninja clang lld \
+            curl openssl zlib libpng libx11 libxi libxtst libxrandr libxcursor libxinerama libxkbcommon \
+            libevdev libpulse mesa wayland wayland-protocols libdecor \
+            qt6-base qt6-webengine qt6-serialport unzip nlohmann-json
+      - uses: actions/checkout@v4
+      - name: Build package
+        run: |
+          useradd -m builder
+          chown -R builder .
+          cd packaging/arch
+          sudo -u builder makepkg -f --noconfirm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: packaging/arch/*.pkg.tar.zst
+
+  release:
+    needs: arch-package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: arch-package
+      - name: Publish the latest build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest ./*.pkg.tar.zst --target "$GITHUB_SHA" --title "Latest build" \
+            --notes "Arch Linux package built from $GITHUB_SHA. Install with: sudo pacman -U edulauncher-*.pkg.tar.zst"
+
+  # Installs the package, downloads the game from Google Play and starts it on a virtual display.
+  # Only the log and screenshots are uploaded, never the game.
+  smoke-test:
+    needs: arch-package
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: arch-package
+      - name: Install package
+        run: |
+          pacman -Syu --noconfirm --needed xorg-server-xvfb xorg-xwd imagemagick
+          pacman -U --noconfirm ./*.pkg.tar.zst
+      - name: Download the game
+        run: edulauncher download
+      - name: Start the game
+        run: |
+          mkdir -p out && mkdir -p -m 700 /tmp/rt
+          Xvfb :99 -screen 0 1280x720x24 &
+          export DISPLAY=:99 XDG_RUNTIME_DIR=/tmp/rt SDL_AUDIODRIVER=dummy MCEE_ACCESS_TOKEN=smoke-test
+          sleep 2
+          edulauncher > out/game.log 2>&1 &
+          pid=$!
+          for t in 30 60 90; do
+            sleep 30
+            if ! kill -0 $pid 2>/dev/null; then echo "Game exited before ${t}s"; tail -60 out/game.log; exit 1; fi
+            xwd -root -silent | magick xwd:- out/screen-$t.png
+            echo "Game running at ${t}s"
+          done
+          kill $pid
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-test
+          path: out/

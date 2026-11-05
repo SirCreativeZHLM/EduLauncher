@@ -81,6 +81,7 @@ install -Dm755 "$ROOT/launcher/edulauncher" "$DESTDIR$PREFIX/bin/edulauncher"
 install -Dm644 "$ROOT/data/io.github.sircreativezhlm.EduLauncher.desktop" "$DESTDIR$PREFIX/share/applications/io.github.sircreativezhlm.EduLauncher.desktop"
 install -Dm644 "$ROOT/data/io.github.sircreativezhlm.EduLauncher.svg" "$DESTDIR$PREFIX/share/icons/hicolor/scalable/apps/io.github.sircreativezhlm.EduLauncher.svg"
 install -Dm644 "$ROOT/data/io.github.sircreativezhlm.EduLauncher.png" "$DESTDIR$PREFIX/share/icons/hicolor/256x256/apps/io.github.sircreativezhlm.EduLauncher.png"
+install -Dm644 -t "$DESTDIR$PREFIX/share/edulauncher/play" "$ROOT"/data/play/*.properties
 install -Dm644 "$ROOT/data/io.github.sircreativezhlm.EduLauncher.metainfo.xml" "$DESTDIR$PREFIX/share/metainfo/io.github.sircreativezhlm.EduLauncher.metainfo.xml"
 
 if [[ -n "${EDU_GAME_APK:-}" ]]; then
