@@ -391,10 +391,10 @@ index 0000000..90fb2d0
 +};
 diff --git a/src/edu/edu_support.cpp b/src/edu/edu_support.cpp
 new file mode 100644
-index 0000000..7d75c2d
+index 0000000..e5a71ef
 --- /dev/null
 +++ b/src/edu/edu_support.cpp
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,179 @@
 +#include "edu_support.h"
 +#include "edu_auth.h"
 +
@@ -408,6 +408,8 @@ index 0000000..7d75c2d
 +#include <mutex>
 +#include <sys/stat.h>
 +#include <thread>
++#include <ctime>
++#include <unistd.h>
 +
 +void ActiveDirectorySignIn::authenticate(std::shared_ptr<FakeJni::JString> arg, FakeJni::JInt flags) {
 +    Log::info("EduAuth", "authenticate(%s, %d)", arg ? arg->asStdString().c_str() : "", (int)flags);
@@ -533,18 +535,57 @@ index 0000000..7d75c2d
 +                                           }});
 +}
 +
++// MCEE_DUMP_SYMBOLS=<file> lists the symbols each fake library offers, to find what a new game version is missing
++static void dumpSymbols(char const* lib, std::unordered_map<std::string, void*> const& syms) {
++    auto path = getenv("MCEE_DUMP_SYMBOLS");
++    if(!path)
++        return;
++    std::ofstream f(path, std::ios::app);
++    for(auto& s : syms)
++        f << lib << " " << s.first << "\n";
++}
++
++void addLibCSymbols(std::unordered_map<std::string, void*>& syms) {
++    // Signals are not forwarded to the game (see sigprocmask in libc-shim), and bionic's sigset_t is smaller than glibc's
++    syms.emplace("pthread_sigmask", (void*)+[](int, void const*, void*) -> int { return 0; });
++    // Same layout in bionic and glibc on x86_64
++    syms.emplace("ldiv", (void*)::ldiv);
++    syms.emplace("getentropy", (void*)::getentropy);
++    syms.emplace("timegm", (void*)::timegm);
++    dumpSymbols("libc", syms);
++}
++
++void addAndroidSymbols(std::unordered_map<std::string, void*>& syms) {
++    // No performance hint service, the game checks for a null manager
++    syms.emplace("APerformanceHint_getManager", (void*)+[]() -> void* { return nullptr; });
++    syms.emplace("APerformanceHint_createSession", (void*)+[](void*, int32_t const*, size_t, int64_t) -> void* { return nullptr; });
++    syms.emplace("APerformanceHint_reportActualWorkDuration", (void*)+[](void*, int64_t) -> int { return 0; });
++    syms.emplace("APerformanceHint_updateTargetWorkDuration", (void*)+[](void*, int64_t) -> int { return 0; });
++    syms.emplace("APerformanceHint_closeSession", (void*)+[](void*) {});
++    syms.emplace("ALooper_acquire", (void*)+[](void*) {});
++    syms.emplace("ALooper_release", (void*)+[](void*) {});
++    syms.emplace("ALooper_wake", (void*)+[](void*) {});
++    syms.emplace("ALooper_removeFd", (void*)+[](void*, int) -> int { return 0; });
++    syms.emplace("ANativeWindow_acquire", (void*)+[](void*) {});
++    syms.emplace("ANativeWindow_release", (void*)+[](void*) {});
++    syms.emplace("ANativeWindow_fromSurface", (void*)+[](void*, void*) -> void* { return nullptr; });
++    syms.emplace("ANativeWindow_setBuffersGeometry", (void*)+[](void*, int32_t, int32_t, int32_t) -> int32_t { return 0; });
++    dumpSymbols("libandroid", syms);
++}
++
 +}  // namespace EduSupport
 diff --git a/src/edu/edu_support.h b/src/edu/edu_support.h
 new file mode 100644
-index 0000000..ce3d334
+index 0000000..20daab6
 --- /dev/null
 +++ b/src/edu/edu_support.h
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,46 @@
 +#pragma once
 +
 +#include <fake-jni/fake-jni.h>
 +#include <mcpelauncher/linker.h>
 +#include <string>
++#include <unordered_map>
 +#include <vector>
 +
 +// Package name reported to the game through Context.getPackageName()
@@ -578,6 +619,11 @@ index 0000000..ce3d334
 +std::string rewriteRequestBody(std::string const& url, std::string const& body, size_t maxSize = 0);
 +
 +void addGameHooks(std::vector<mcpelauncher_hook_t>& hooks);
++
++// Stubs for libc and libandroid functions that newer Education builds import but upstream does not provide yet.
++// Existing entries are kept.
++void addLibCSymbols(std::unordered_map<std::string, void*>& syms);
++void addAndroidSymbols(std::unordered_map<std::string, void*>& syms);
 +
 +}  // namespace EduSupport
 diff --git a/src/jni/jni_descriptors.cpp b/src/jni/jni_descriptors.cpp
@@ -816,7 +862,7 @@ index 966b3ed..2c1df74 100644
      void saveFile(std::shared_ptr<FakeJni::JString>);
  
 diff --git a/src/main.cpp b/src/main.cpp
-index e24c581..9d615d8 100644
+index e24c581..2335f57 100644
 --- a/src/main.cpp
 +++ b/src/main.cpp
 @@ -9,6 +9,7 @@
@@ -835,7 +881,23 @@ index e24c581..9d615d8 100644
          // Minecraft 1.16.210 or later, absolute path on linux (source build ubuntu 20.04)
          {std::string("/data/data") + PathHelper::getParentDir(PathHelper::getAppDir()) + "/proc/" + std::to_string(pid) + "/cmdline", PathHelper::getPrimaryDataDirectory()}};
      if(argc >= 1 && argv != nullptr && argv[0] != nullptr && argv[0][0] != '\0') {
-@@ -502,6 +504,7 @@ Hardware	: Qualcomm Technologies, Inc MSM8998
+@@ -394,6 +396,7 @@ Hardware	: Qualcomm Technologies, Inc MSM8998
+         Log::trace("REDIRECT", "%s to %s", redir.first.data(), redir.second.data());
+     }
+     auto libC = MinecraftUtils::getLibCSymbols();
++    EduSupport::addLibCSymbols(libC);
+     ThreadMover::hookLibC(libC);
+ 
+ #ifdef USE_ARMHF_SUPPORT
+@@ -474,6 +477,7 @@ Hardware	: Qualcomm Technologies, Inc MSM8998
+     FakeLooper::initHybrisHooks(android_syms);
+     FakeWindow::initHybrisHooks(android_syms);
+     SmartStub<android_symbols, std::make_index_sequence<(sizeof(android_symbols) / sizeof(*android_symbols)) - 1>>::AddAll(android_syms);
++    EduSupport::addAndroidSymbols(android_syms);
+     linker::load_library("libandroid.so", android_syms);
+     CorePatches::loadGameWindowLibrary();
+ 
+@@ -502,6 +506,7 @@ Hardware	: Qualcomm Technologies, Inc MSM8998
  
      std::vector<mcpelauncher_hook_t> mcpeHooks;
      FakeSwappyGL::initHooks(mcpeHooks);

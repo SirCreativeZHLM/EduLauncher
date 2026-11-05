@@ -31,7 +31,8 @@ against a pinned upstream commit (see `scripts/build.sh`).
 | AppImage | Builds. The sign-in window from it opens Microsoft's real *"Sign in to continue to Minecraft: Education Edition"* page. Built on Arch, so it needs a recent glibc. |
 | Flatpak | Manifest builds and runs end to end (checked natively on arm64). Build the x86_64 one on your machine (see below). |
 | APK import | Single APKs and split bundles, tested with dummy bundles. |
-| Playing the game | **Not tested yet.** Needs a real Minecraft Education APK and a school account. |
+| Starting the game | Minecraft Education 1.26.33 (x86_64, from Google Play) boots to the title screen and asks for the school sign-in (tested on Arch x86_64 with software rendering). |
+| Signing in and playing | **Not tested yet.** Needs a school account. |
 
 Earlier community work ([mceelinux](https://github.com/orgs/mceelinux/discussions/1)) reached these points:
 the window opens and stays open with the telemetry hook, sign-in gets a valid token once the platform is
@@ -64,6 +65,15 @@ makepkg -si
 ```sh
 sudo pacman -U edulauncher-0.1.0-1-x86_64.pkg.tar.zst
 ```
+
+### Arch package with the game inside (private use)
+
+```sh
+EDU_GAME_APK=/path/to/MinecraftEducation.apks makepkg -si
+```
+
+The game is installed to `/usr/share/edulauncher/game` and used until you `edulauncher import` your own copy.
+Never share a package built this way, the game files belong to Microsoft.
 
 ### AppImage
 

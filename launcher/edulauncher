@@ -22,13 +22,20 @@ if [[ -z "$LIBEXEC_DIR" ]]; then
     done
 fi
 
-case "$(uname -m)" in
+case "${EDULAUNCHER_ABI:-$(uname -m)}" in
     x86_64|amd64) ABI="x86_64" ;;
     aarch64|arm64) ABI="arm64-v8a" ;;
     i?86) ABI="x86" ;;
     armv7*) ABI="armeabi-v7a" ;;
     *) ABI="$(uname -m)" ;;
 esac
+
+# A game copy shipped inside the package, used until the user imports their own
+BUNDLED_GAME=""
+for d in "$SELF_DIR/../share/edulauncher/game" /usr/share/edulauncher/game /app/share/edulauncher/game; do
+    if [[ -f "$d/lib/$ABI/libminecraftpe.so" ]]; then BUNDLED_GAME="$(cd "$d" && pwd)"; break; fi
+done
+if [[ -n "$BUNDLED_GAME" && ! -f "$GAME_DIR/lib/$ABI/libminecraftpe.so" ]]; then GAME_DIR="$BUNDLED_GAME"; fi
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -100,10 +107,12 @@ import_game() {
         die "This APK has no $ABI build of the game (it contains: ${found:-nothing}).
 Minecraft Education needs the $ABI version, the one Google Play gives Chromebooks."
     fi
-    if ! grep -aq "minecraftedu" "$stage/AndroidManifest.xml" 2>/dev/null; then
+    # The binary manifest stores strings as UTF-16, drop the NUL bytes before searching
+    if ! tr -d '\0' < "$stage/AndroidManifest.xml" 2>/dev/null | grep -aq "minecraftedu"; then
         echo "Warning: this does not look like Minecraft Education (com.mojang.minecraftedu)." >&2
     fi
 
+    GAME_DIR="$DATA_ROOT/game"
     mkdir -p "$DATA_ROOT"
     rm -rf "$GAME_DIR.old"
     [[ -d "$GAME_DIR" ]] && mv "$GAME_DIR" "$GAME_DIR.old"
@@ -149,7 +158,8 @@ case "${1:-}" in
         echo "Launcher:  ${LIBEXEC_DIR:-not found}"
         echo "Game dir:  $GAME_DIR"
         echo "Profile:   $PROFILE_DIR"
-        if [[ -f "$GAME_DIR/lib/$ABI/libminecraftpe.so" ]]; then echo "Game:      installed"; else echo "Game:      not installed"; fi
+        if [[ "$GAME_DIR" == "$BUNDLED_GAME" ]]; then echo "Game:      bundled ($GAME_DIR)"
+        elif [[ -f "$GAME_DIR/lib/$ABI/libminecraftpe.so" ]]; then echo "Game:      installed"; else echo "Game:      not installed"; fi
         if [[ -f "$PROFILE_DIR/edu_auth.json" ]]; then echo "Account:   signed in"; else echo "Account:   signed out"; fi ;;
     -h|--help|help)
         sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;

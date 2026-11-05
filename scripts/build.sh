@@ -8,6 +8,7 @@
 #   EDU_BUILD      cmake build directory                     (default: build/cmake)
 #   EDU_OWN_CURL   ON to build curl from source              (default: OFF)
 #   EDU_CMAKE_ARGS extra cmake arguments for the game client
+#   EDU_GAME_APK   game .apk/.apks/.xapk/.apkm to ship inside the package (private builds only)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -81,5 +82,15 @@ install -Dm644 "$ROOT/data/io.github.sircreativezhlm.EduLauncher.desktop" "$DEST
 install -Dm644 "$ROOT/data/io.github.sircreativezhlm.EduLauncher.svg" "$DESTDIR$PREFIX/share/icons/hicolor/scalable/apps/io.github.sircreativezhlm.EduLauncher.svg"
 install -Dm644 "$ROOT/data/io.github.sircreativezhlm.EduLauncher.png" "$DESTDIR$PREFIX/share/icons/hicolor/256x256/apps/io.github.sircreativezhlm.EduLauncher.png"
 install -Dm644 "$ROOT/data/io.github.sircreativezhlm.EduLauncher.metainfo.xml" "$DESTDIR$PREFIX/share/metainfo/io.github.sircreativezhlm.EduLauncher.metainfo.xml"
+
+if [[ -n "${EDU_GAME_APK:-}" ]]; then
+    echo "==> Bundling the game from $EDU_GAME_APK"
+    tmp="$(mktemp -d)"
+    XDG_DATA_HOME="$tmp" EDULAUNCHER_LIBEXEC="$DESTDIR$LIBDIR/bin" "$ROOT/launcher/edulauncher" import "$EDU_GAME_APK"
+    rm -rf "$DESTDIR$PREFIX/share/edulauncher/game"
+    mkdir -p "$DESTDIR$PREFIX/share/edulauncher"
+    mv "$tmp/edulauncher/game" "$DESTDIR$PREFIX/share/edulauncher/game"
+    rm -rf "$tmp"
+fi
 
 echo "==> Done: $DESTDIR$PREFIX"

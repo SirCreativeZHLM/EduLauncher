@@ -1,6 +1,8 @@
 # Maintainer: SirCreativeZHLM
 # Builds from the EduLauncher checkout this file lives in:
 #   cd packaging/arch && makepkg -si
+# To ship the game inside the package (private use only, never redistribute it):
+#   EDU_GAME_APK=/path/to/MinecraftEducation.apks makepkg -si
 pkgname=edulauncher
 pkgver=0.1.0
 pkgrel=1
@@ -19,7 +21,12 @@ _root="$(cd "$startdir/../.." && pwd)"
 
 build() {
     export CC=clang CXX=clang++
-    EDU_SRC="$srcdir/upstream" EDU_BUILD="$srcdir/build" \
+    # The bionic linker trips glibc's fortify checks (abort in resolve_path), build it like upstream does
+    CFLAGS="${CFLAGS//-Wp,-D_FORTIFY_SOURCE=?/}"
+    CXXFLAGS="${CXXFLAGS//-Wp,-D_FORTIFY_SOURCE=?/}"
+    CXXFLAGS="${CXXFLAGS//-Wp,-D_GLIBCXX_ASSERTIONS/}"
+    export CFLAGS CXXFLAGS
+    EDU_GAME_APK="${EDU_GAME_APK:-}" EDU_SRC="$srcdir/upstream" EDU_BUILD="$srcdir/build" \
         "$_root/scripts/build.sh" --prefix /usr --destdir "$srcdir/stage"
 }
 
