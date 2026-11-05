@@ -47,8 +47,8 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 say() {
     echo "$1" >&2
-    # Only show a dialog when not started from a terminal
-    if [[ ! -t 2 ]]; then
+    # Only show a dialog when not started from a terminal and there is a display to show it on
+    if [[ ! -t 2 && -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
         if [[ -x "$LIBEXEC_DIR/edulauncher-signin" ]]; then "$LIBEXEC_DIR/edulauncher-signin" --message "$1" || true
         elif have zenity; then zenity --info --title="Minecraft Education" --text="$1" || true
         elif have kdialog; then kdialog --title "Minecraft Education" --msgbox "$1" || true

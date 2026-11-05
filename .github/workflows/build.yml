@@ -19,14 +19,14 @@ jobs:
             curl openssl zlib libpng libx11 libxi libxtst libxrandr libxcursor libxinerama libxkbcommon \
             libevdev libpulse mesa wayland wayland-protocols libdecor \
             qt6-base qt6-webengine qt6-serialport unzip nlohmann-json
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build package
         run: |
           useradd -m builder
           chown -R builder .
           cd packaging/arch
           sudo -u builder makepkg -f --noconfirm
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: arch-package
           path: packaging/arch/*.pkg.tar.zst
@@ -35,7 +35,7 @@ jobs:
     needs: arch-package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: arch-package
       - name: Publish the latest build
@@ -54,16 +54,20 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: arch-package
       - name: Install package
         run: |
           pacman -Syu --noconfirm --needed xorg-server-xvfb xorg-xwd imagemagick
           pacman -U --noconfirm ./*.pkg.tar.zst
+      # Aurora's account service blocks datacenter addresses, so this often cannot run on GitHub's runners
       - name: Download the game
+        id: download
+        continue-on-error: true
         run: edulauncher download
       - name: Start the game
+        if: steps.download.outcome == 'success'
         run: |
           mkdir -p out && mkdir -p -m 700 /tmp/rt
           Xvfb :99 -screen 0 1280x720x24 &
@@ -78,7 +82,7 @@ jobs:
             echo "Game running at ${t}s"
           done
           kill $pid
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: smoke-test
