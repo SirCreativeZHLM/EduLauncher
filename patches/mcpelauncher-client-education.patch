@@ -18,10 +18,10 @@ index 5c50f36..ea3d03d 100644
  if (NO_OPENSSL)
 diff --git a/src/edu/edu_auth.cpp b/src/edu/edu_auth.cpp
 new file mode 100644
-index 0000000..f3ffd58
+index 0000000..c9fcdb5
 --- /dev/null
 +++ b/src/edu/edu_auth.cpp
-@@ -0,0 +1,322 @@
+@@ -0,0 +1,401 @@
 +#include "edu_auth.h"
 +
 +#include <EnvPathUtil.h>
@@ -68,6 +68,50 @@ index 0000000..f3ffd58
 +        out += tbl[(v >> 6) & 63];
 +    }
 +    return out;
++}
++
++static std::string base64UrlDecode(std::string const& in) {
++    std::string out;
++    unsigned v = 0;
++    int bits = 0;
++    for(char c : in) {
++        int d;
++        if(c >= 'A' && c <= 'Z')
++            d = c - 'A';
++        else if(c >= 'a' && c <= 'z')
++            d = c - 'a' + 26;
++        else if(c >= '0' && c <= '9')
++            d = c - '0' + 52;
++        else if(c == '-' || c == '+')
++            d = 62;
++        else if(c == '_' || c == '/')
++            d = 63;
++        else
++            continue;
++        v = (v << 6) | d;
++        bits += 6;
++        if(bits >= 8) {
++            bits -= 8;
++            out += (char)((v >> bits) & 0xff);
++        }
++    }
++    return out;
++}
++
++// The account name from an id_token, which is only decoded, the token came straight from the token endpoint
++static std::string userFromIdToken(std::string const& idToken) {
++    auto a = idToken.find('.');
++    auto b = idToken.find('.', a + 1);
++    if(a == std::string::npos || b == std::string::npos)
++        return {};
++    try {
++        auto claims = nlohmann::json::parse(base64UrlDecode(idToken.substr(a + 1, b - a - 1)));
++        for(auto key : {"preferred_username", "upn", "email"})
++            if(claims.contains(key) && claims[key].is_string())
++                return claims[key].get<std::string>();
++    } catch(...) {
++    }
++    return {};
 +}
 +
 +static std::string urlEncode(std::string const& s) {
@@ -189,6 +233,17 @@ index 0000000..f3ffd58
 +    return PathHelper::getPrimaryDataDirectory() + "edu_auth.json";
 +}
 +
++std::string EduAuth::scopeFor(std::string const& target) {
++    if(target.empty())
++        return SCOPE;
++    auto resource = target;
++    while(!resource.empty() && resource.back() == '/')
++        resource.pop_back();
++    if(resource.find("/.default") == std::string::npos)
++        resource += "/.default";
++    return resource + " offline_access openid profile";
++}
++
 +void EduAuth::load() {
 +    if(loaded)
 +        return;
@@ -199,43 +254,57 @@ index 0000000..f3ffd58
 +    try {
 +        auto js = nlohmann::json::parse(f);
 +        refreshToken = js.value("refresh_token", "");
-+        accessToken = js.value("access_token", "");
-+        expiresAt = js.value("expires_at", 0LL);
++        user = js.value("user", "");
++        if(js.contains("tokens"))
++            for(auto& [scope, t] : js["tokens"].items())
++                tokens[scope] = Token{t.value("access_token", ""), t.value("expires_at", 0LL)};
++        else if(js.contains("access_token"))
++            tokens[SCOPE] = Token{js.value("access_token", ""), js.value("expires_at", 0LL)};
 +    } catch(std::exception& e) {
 +        Log::warn("EduAuth", "Ignoring unreadable token cache: %s", e.what());
 +    }
 +}
 +
 +void EduAuth::save() {
++    auto js = nlohmann::json{{"refresh_token", refreshToken}, {"user", user}, {"tokens", nlohmann::json::object()}};
++    for(auto& [scope, t] : tokens)
++        js["tokens"][scope] = {{"access_token", t.accessToken}, {"expires_at", t.expiresAt}};
 +    auto path = cachePath();
 +    {
 +        std::ofstream f(path, std::ios::trunc);
-+        f << nlohmann::json{{"refresh_token", refreshToken}, {"access_token", accessToken}, {"expires_at", expiresAt}}.dump();
++        f << js.dump();
 +    }
 +    chmod(path.c_str(), 0600);
 +}
 +
-+void EduAuth::applyTokenResponse(std::string const& body) {
++void EduAuth::applyTokenResponse(std::string const& body, std::string const& scope) {
 +    auto js = nlohmann::json::parse(body);
-+    accessToken = js.at("access_token").get<std::string>();
++    tokens[scope] = Token{js.at("access_token").get<std::string>(), nowSeconds() + js.value("expires_in", 3600LL)};
 +    if(js.contains("refresh_token"))
 +        refreshToken = js["refresh_token"].get<std::string>();
-+    expiresAt = nowSeconds() + js.value("expires_in", 3600LL);
++    if(js.contains("id_token")) {
++        auto name = userFromIdToken(js["id_token"].get<std::string>());
++        if(!name.empty())
++            user = name;
++    }
 +    save();
 +}
 +
-+void EduAuth::redeemRefreshToken() {
++void EduAuth::redeemRefreshToken(std::string const& scope) {
 +    long status;
 +    auto body = postForm(std::string(AUTHORITY) + "token",
-+                         "client_id=" + urlEncode(CLIENT_ID) + "&grant_type=refresh_token&refresh_token=" + urlEncode(refreshToken) + "&scope=" + urlEncode(SCOPE),
++                         "client_id=" + urlEncode(CLIENT_ID) + "&grant_type=refresh_token&refresh_token=" + urlEncode(refreshToken) + "&scope=" + urlEncode(scope),
 +                         status);
 +    if(status != 200) {
-+        Log::warn("EduAuth", "Refreshing the sign-in failed (%ld): %s", status, body.c_str());
-+        refreshToken.clear();
-+        save();
-+        throw std::runtime_error("Saved sign-in expired");
++        Log::warn("EduAuth", "Refreshing the sign-in for %s failed (%ld): %s", scope.c_str(), status, body.c_str());
++        // A refresh token that is invalid for every resource has to go, one that only lacks consent for this one stays
++        if(body.find("invalid_grant") != std::string::npos && scope == SCOPE) {
++            refreshToken.clear();
++            save();
++        }
++        throw InteractionRequired("Saved sign-in expired");
 +    }
-+    applyTokenResponse(body);
++    applyTokenResponse(body, scope);
 +}
 +
 +std::string EduAuth::showSignInWindow(std::string const& url) {
@@ -271,7 +340,7 @@ index 0000000..f3ffd58
 +    return line;
 +}
 +
-+void EduAuth::interactiveSignIn() {
++void EduAuth::interactiveSignIn(std::string const& userHint) {
 +    unsigned char verifierBytes[32];
 +    RAND_bytes(verifierBytes, sizeof(verifierBytes));
 +    auto verifier = base64Url(verifierBytes, sizeof(verifierBytes));
@@ -284,11 +353,11 @@ index 0000000..f3ffd58
 +
 +    auto url = std::string(AUTHORITY) + "authorize?client_id=" + urlEncode(CLIENT_ID) + "&response_type=code&redirect_uri=" + urlEncode(REDIRECT_URI) +
 +               "&response_mode=query&scope=" + urlEncode(SCOPE) + "&code_challenge=" + challenge + "&code_challenge_method=S256&state=" + state +
-+               "&prompt=select_account";
++               (userHint.empty() ? "&prompt=select_account" : "&login_hint=" + urlEncode(userHint));
 +
 +    auto result = showSignInWindow(url);
 +    if(result.empty())
-+        throw std::runtime_error("Sign-in was cancelled");
++        throw Cancelled("Sign-in was cancelled");
 +    auto error = queryParam(result, "error");
 +    if(!error.empty())
 +        throw std::runtime_error("Microsoft sign-in failed: " + error + " " + queryParam(result, "error_description"));
@@ -312,47 +381,59 @@ index 0000000..f3ffd58
 +        }
 +        throw std::runtime_error("Microsoft rejected the sign-in. " + description);
 +    }
-+    applyTokenResponse(body);
++    applyTokenResponse(body, SCOPE);
 +}
 +
-+std::string EduAuth::acquireToken(bool allowInteractive) {
++EduAuth::Token EduAuth::acquireToken(bool allowInteractive, std::string const& target, std::string const& userHint) {
 +    std::lock_guard<std::mutex> lock(mutex);
 +    if(auto env = getenv("MCEE_ACCESS_TOKEN"))
-+        return env;
++        return Token{env, nowSeconds() + 3600};
 +    load();
-+    if(!accessToken.empty() && expiresAt - 300 > nowSeconds())
-+        return accessToken;
++    auto scope = scopeFor(target);
++    auto it = tokens.find(scope);
++    if(it != tokens.end() && !it->second.accessToken.empty() && it->second.expiresAt - 300 > nowSeconds())
++        return it->second;
 +    if(!refreshToken.empty()) {
 +        try {
-+            redeemRefreshToken();
-+            return accessToken;
-+        } catch(std::exception& e) {
++            redeemRefreshToken(scope);
++            return tokens[scope];
++        } catch(InteractionRequired& e) {
 +            Log::warn("EduAuth", "%s", e.what());
 +        }
 +    }
 +    if(!allowInteractive)
-+        throw std::runtime_error("Not signed in");
-+    interactiveSignIn();
-+    return accessToken;
++        throw InteractionRequired("Please sign in again");
++    interactiveSignIn(userHint);
++    if(scope != SCOPE)
++        redeemRefreshToken(scope);
++    return tokens[scope];
++}
++
++std::string EduAuth::userName() {
++    std::lock_guard<std::mutex> lock(mutex);
++    load();
++    return user;
 +}
 +
 +void EduAuth::signOut() {
 +    std::lock_guard<std::mutex> lock(mutex);
 +    loaded = true;
-+    accessToken.clear();
++    tokens.clear();
 +    refreshToken.clear();
-+    expiresAt = 0;
++    user.clear();
 +    unlink(cachePath().c_str());
 +}
 diff --git a/src/edu/edu_auth.h b/src/edu/edu_auth.h
 new file mode 100644
-index 0000000..90fb2d0
+index 0000000..240dcbe
 --- /dev/null
 +++ b/src/edu/edu_auth.h
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,58 @@
 +#pragma once
 +
++#include <map>
 +#include <mutex>
++#include <stdexcept>
 +#include <string>
 +
 +// Microsoft Entra ID (Azure AD) sign-in for Minecraft Education.
@@ -366,35 +447,52 @@ index 0000000..90fb2d0
 +    static constexpr const char* REDIRECT_URI = "https://login.microsoftonline.com/common/oauth2/nativeclient";
 +    static constexpr const char* SCOPE = "https://meeservices.minecraft.net/.default offline_access openid profile";
 +
++    struct Token {
++        std::string accessToken;
++        long long expiresAt = 0;  // seconds since the epoch
++    };
++    // The user closed the sign-in window
++    struct Cancelled : std::runtime_error {
++        using std::runtime_error::runtime_error;
++    };
++    // There is no saved sign-in that works without asking the user
++    struct InteractionRequired : std::runtime_error {
++        using std::runtime_error::runtime_error;
++    };
++
 +    static EduAuth& instance();
 +
-+    // Returns a valid access token, refreshing or asking the user to sign in when needed.
++    // Returns a valid access token for target (a resource such as https://meeservices.minecraft.net, empty for the
++    // default one), refreshing or asking the user to sign in when needed.
 +    // Throws std::runtime_error with a user facing message on failure.
-+    std::string acquireToken(bool allowInteractive);
++    Token acquireToken(bool allowInteractive, std::string const& target = {}, std::string const& userHint = {});
++    // The signed in account (user@school.edu), empty when nobody signed in yet
++    std::string userName();
 +
 +    void signOut();
 +
 +private:
 +    std::mutex mutex;
-+    std::string accessToken;
++    std::map<std::string, Token> tokens;  // by scope
 +    std::string refreshToken;
-+    long long expiresAt = 0;
++    std::string user;
 +    bool loaded = false;
 +
++    static std::string scopeFor(std::string const& target);
 +    std::string cachePath();
 +    void load();
 +    void save();
-+    void applyTokenResponse(std::string const& body);
-+    void redeemRefreshToken();
-+    void interactiveSignIn();
++    void applyTokenResponse(std::string const& body, std::string const& scope);
++    void redeemRefreshToken(std::string const& scope);
++    void interactiveSignIn(std::string const& userHint);
 +    std::string showSignInWindow(std::string const& url);
 +};
 diff --git a/src/edu/edu_support.cpp b/src/edu/edu_support.cpp
 new file mode 100644
-index 0000000..e5a71ef
+index 0000000..586792b
 --- /dev/null
 +++ b/src/edu/edu_support.cpp
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,266 @@
 +#include "edu_support.h"
 +#include "edu_auth.h"
 +
@@ -411,36 +509,123 @@ index 0000000..e5a71ef
 +#include <ctime>
 +#include <unistd.h>
 +
-+void ActiveDirectorySignIn::authenticate(std::shared_ptr<FakeJni::JString> arg, FakeJni::JInt flags) {
-+    Log::info("EduAuth", "authenticate(%s, %d)", arg ? arg->asStdString().c_str() : "", (int)flags);
++// com.microsoft.authentication.Status ordinals
++enum OneAuthStatus { STATUS_UNEXPECTED = 0, STATUS_INTERACTION_REQUIRED = 2, STATUS_NO_NETWORK = 3 };
++
++static std::string str(std::shared_ptr<FakeJni::JString> const& s) {
++    return s ? s->asStdString() : std::string();
++}
++
++template<class T>
++static void callVoid(FakeJni::Jvm const* vm, std::shared_ptr<T> const& self, char const* name) {
++    FakeJni::LocalFrame env(*vm);
++    auto cb = self->getClass().getMethod("()V", name);
++    if(cb)
++        cb->invoke(env.getJniEnv(), self.get());
++    else
++        Log::error("EduAuth", "%s is not registered", name);
++}
++
++std::shared_ptr<ActiveDirectorySignIn> ActiveDirectorySignIn::createActiveDirectorySignIn() {
++    return std::make_shared<ActiveDirectorySignIn>();
++}
++
++void ActiveDirectorySignIn::signIn(bool interactive, std::string target, std::string hint) {
++    cancelled = false;
 +    FakeJni::Jvm const* vm = &FakeJni::JniEnv::getCurrentEnv()->getVM();
 +    auto self = std::static_pointer_cast<ActiveDirectorySignIn>(shared_from_this());
-+    std::thread([vm, self]() {
++    std::thread([vm, self, interactive, target, hint]() {
 +        try {
-+            self->accessToken = EduAuth::instance().acquireToken(true);
-+            self->lastError.clear();
-+            Log::info("EduAuth", "Signed in");
++            auto token = EduAuth::instance().acquireToken(interactive, target, hint);
++            self->accessToken = token.accessToken;
++            self->expiresOn = token.expiresAt;
++            auto user = EduAuth::instance().userName();
++            self->userHint = user.empty() ? hint : user;
++            self->error = false;
++            self->errorString.clear();
++            self->errorStatus = -1;
++            Log::info("EduAuth", "Signed in as %s", self->userHint.c_str());
++        } catch(EduAuth::Cancelled& e) {
++            self->cancelled = true;
++            self->error = false;
++            self->userHint = hint;
++            Log::info("EduAuth", "Sign-in cancelled");
++        } catch(EduAuth::InteractionRequired& e) {
++            self->error = true;
++            self->errorString = e.what();
++            self->errorStatus = STATUS_INTERACTION_REQUIRED;
++            Log::info("EduAuth", "Silent sign-in needs the user: %s", e.what());
 +        } catch(std::exception& e) {
-+            self->accessToken.clear();
-+            self->lastError = e.what();
++            self->error = true;
++            self->errorString = e.what();
++            self->errorStatus = std::string(e.what()).find("Network error") != std::string::npos ? STATUS_NO_NETWORK : STATUS_UNEXPECTED;
 +            Log::error("EduAuth", "Sign-in failed: %s", e.what());
 +        }
-+        FakeJni::LocalFrame env(*vm);
-+        auto cb = self->getClass().getMethod("()V", "nativeOnDataChanged");
-+        if(cb) {
-+            cb->invoke(env.getJniEnv(), self.get());
-+        } else {
-+            Log::error("EduAuth", "nativeOnDataChanged is not registered");
-+        }
++        callVoid(vm, self, "nativeOnDataChanged");
 +    }).detach();
++}
++
++void ActiveDirectorySignIn::authenticate(std::shared_ptr<FakeJni::JString> userHint, FakeJni::JInt promptBehavior) {
++    Log::info("EduAuth", "authenticate(%s, %d)", str(userHint).c_str(), (int)promptBehavior);
++    signIn(true, {}, str(userHint));
++}
++
++void ActiveDirectorySignIn::silentSignin(std::shared_ptr<FakeJni::JString> userHint, std::shared_ptr<FakeJni::JString> target) {
++    Log::info("EduAuth", "silentSignin(%s, %s)", str(userHint).c_str(), str(target).c_str());
++    signIn(false, str(target), str(userHint));
++}
++
++void ActiveDirectorySignIn::signOut() {
++    Log::info("EduAuth", "signOut()");
++    EduAuth::instance().signOut();
++    signOutError.clear();
++    FakeJni::Jvm const* vm = &FakeJni::JniEnv::getCurrentEnv()->getVM();
++    auto self = shared_from_this();
++    std::thread([vm, self]() { callVoid(vm, self, "nativeOnSignOutCallback"); }).detach();
++}
++
++void ActiveDirectorySignIn::clearCookies() {
++    // The sign-in window keeps its own cookies, "edulauncher signout" clears them
 +}
 +
 +std::shared_ptr<FakeJni::JString> ActiveDirectorySignIn::getAccessToken() {
 +    return std::make_shared<FakeJni::JString>(accessToken);
 +}
 +
++FakeJni::JLong ActiveDirectorySignIn::getExpiresOn() {
++    return expiresOn;
++}
++
++std::shared_ptr<FakeJni::JString> ActiveDirectorySignIn::getUserHint() {
++    return std::make_shared<FakeJni::JString>(userHint);
++}
++
++FakeJni::JBoolean ActiveDirectorySignIn::getCancelled() {
++    return cancelled;
++}
++
++FakeJni::JBoolean ActiveDirectorySignIn::hasError() {
++    return error;
++}
++
++std::shared_ptr<FakeJni::JString> ActiveDirectorySignIn::getErrorString() {
++    return std::make_shared<FakeJni::JString>(errorString);
++}
++
++FakeJni::JInt ActiveDirectorySignIn::getErrorStatus() {
++    return errorStatus;
++}
++
++FakeJni::JInt ActiveDirectorySignIn::getErrorSubStatus() {
++    return error ? 0 : -1;
++}
++
++std::shared_ptr<FakeJni::JString> ActiveDirectorySignIn::getSignOutError() {
++    return std::make_shared<FakeJni::JString>(signOutError);
++}
++
 +std::shared_ptr<FakeJni::JString> ActiveDirectorySignIn::getLastError() {
-+    return std::make_shared<FakeJni::JString>(lastError);
++    return std::make_shared<FakeJni::JString>(errorString);
 +}
 +
 +namespace EduSupport {
@@ -576,10 +761,10 @@ index 0000000..e5a71ef
 +}  // namespace EduSupport
 diff --git a/src/edu/edu_support.h b/src/edu/edu_support.h
 new file mode 100644
-index 0000000..20daab6
+index 0000000..4a094c1
 --- /dev/null
 +++ b/src/edu/edu_support.h
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,70 @@
 +#pragma once
 +
 +#include <fake-jni/fake-jni.h>
@@ -593,17 +778,41 @@ index 0000000..20daab6
 +#define MCEE_PACKAGE_NAME "com.mojang.minecraftedu"
 +#endif
 +
-+// Java side of the Education login, the game calls authenticate() and waits for
-+// nativeOnDataChanged before reading getAccessToken()/getLastError().
++// Java side of the Education login (OneAuth based since 1.21). The game calls authenticate() or silentSignin() and
++// waits for nativeOnDataChanged, then reads hasError()/getCancelled()/getAccessToken()/getExpiresOn()/getUserHint().
 +class ActiveDirectorySignIn : public FakeJni::JObject {
-+    std::string lastError;
 +    std::string accessToken;
++    std::string userHint;
++    std::string errorString;
++    std::string signOutError;
++    FakeJni::JLong expiresOn = -1;
++    bool cancelled = false;
++    bool error = false;
++    FakeJni::JInt errorStatus = -1;
++
++    // Runs sign-in work off the game thread, then reports through nativeOnDataChanged
++    void signIn(bool interactive, std::string target, std::string hint);
 +
 +public:
 +    DEFINE_CLASS_NAME("com/mojang/minecraftpe/ActiveDirectorySignIn")
 +
-+    void authenticate(std::shared_ptr<FakeJni::JString> arg, FakeJni::JInt flags);
++    static std::shared_ptr<ActiveDirectorySignIn> createActiveDirectorySignIn();
++
++    void authenticate(std::shared_ptr<FakeJni::JString> userHint, FakeJni::JInt promptBehavior);
++    void silentSignin(std::shared_ptr<FakeJni::JString> userHint, std::shared_ptr<FakeJni::JString> target);
++    void signOut();
++    void clearCookies();
++
 +    std::shared_ptr<FakeJni::JString> getAccessToken();
++    FakeJni::JLong getExpiresOn();
++    std::shared_ptr<FakeJni::JString> getUserHint();
++    FakeJni::JBoolean getCancelled();
++    FakeJni::JBoolean hasError();
++    std::shared_ptr<FakeJni::JString> getErrorString();
++    FakeJni::JInt getErrorStatus();
++    FakeJni::JInt getErrorSubStatus();
++    std::shared_ptr<FakeJni::JString> getSignOutError();
++    // Older game versions
 +    std::shared_ptr<FakeJni::JString> getLastError();
 +};
 +
@@ -627,7 +836,7 @@ index 0000000..20daab6
 +
 +}  // namespace EduSupport
 diff --git a/src/jni/jni_descriptors.cpp b/src/jni/jni_descriptors.cpp
-index ebf8903..b1eb66c 100644
+index ebf8903..bc74551 100644
 --- a/src/jni/jni_descriptors.cpp
 +++ b/src/jni/jni_descriptors.cpp
 @@ -7,6 +7,7 @@
@@ -648,13 +857,25 @@ index ebf8903..b1eb66c 100644
      {Function<&MainActivity::lockCursor>{}, "lockCursor"},
      {Function<&MainActivity::unlockCursor>{}, "unlockCursor"},
      {Function<&MainActivity::getImageData>{}, "getImageData"},
-@@ -185,6 +187,12 @@ END_NATIVE_DESCRIPTOR
+@@ -185,6 +187,24 @@ END_NATIVE_DESCRIPTOR
  BEGIN_NATIVE_DESCRIPTOR(PlayIntegrity)
  END_NATIVE_DESCRIPTOR
  
 +BEGIN_NATIVE_DESCRIPTOR(ActiveDirectorySignIn){Constructor<ActiveDirectorySignIn>{}},
++    {Function<&ActiveDirectorySignIn::createActiveDirectorySignIn>{}, "createActiveDirectorySignIn", FakeJni::JMethodID::PUBLIC | FakeJni::JMethodID::STATIC},
 +    {Function<&ActiveDirectorySignIn::authenticate>{}, "authenticate"},
++    {Function<&ActiveDirectorySignIn::silentSignin>{}, "silentSignin"},
++    {Function<&ActiveDirectorySignIn::signOut>{}, "signOut"},
++    {Function<&ActiveDirectorySignIn::clearCookies>{}, "clearCookies"},
 +    {Function<&ActiveDirectorySignIn::getAccessToken>{}, "getAccessToken"},
++    {Function<&ActiveDirectorySignIn::getExpiresOn>{}, "getExpiresOn"},
++    {Function<&ActiveDirectorySignIn::getUserHint>{}, "getUserHint"},
++    {Function<&ActiveDirectorySignIn::getCancelled>{}, "getCancelled"},
++    {Function<&ActiveDirectorySignIn::hasError>{}, "hasError"},
++    {Function<&ActiveDirectorySignIn::getErrorString>{}, "getErrorString"},
++    {Function<&ActiveDirectorySignIn::getErrorStatus>{}, "getErrorStatus"},
++    {Function<&ActiveDirectorySignIn::getErrorSubStatus>{}, "getErrorSubStatus"},
++    {Function<&ActiveDirectorySignIn::getSignOutError>{}, "getSignOutError"},
 +    {Function<&ActiveDirectorySignIn::getLastError>{}, "getLastError"},
 +    END_NATIVE_DESCRIPTOR
 +
@@ -662,7 +883,7 @@ index ebf8903..b1eb66c 100644
  END_NATIVE_DESCRIPTOR
  
 diff --git a/src/jni/jni_support.cpp b/src/jni/jni_support.cpp
-index 6e6d557..99e8434 100644
+index 6e6d557..05892c4 100644
 --- a/src/jni/jni_support.cpp
 +++ b/src/jni/jni_support.cpp
 @@ -12,6 +12,7 @@
@@ -681,12 +902,13 @@ index 6e6d557..99e8434 100644
      vm.registerClass<AccountManager>();
      vm.registerClass<Account>();
  
-@@ -172,6 +174,10 @@ void JniSupport::registerMinecraftNatives(void* (*symResolver)(const char*)) {
+@@ -172,6 +174,11 @@ void JniSupport::registerMinecraftNatives(void* (*symResolver)(const char*)) {
                                                          {"nativePlayIntegrityComplete", "()V"},
                                                      },
                      symResolver);
 +    registerNatives(ActiveDirectorySignIn::getDescriptor(), {
 +                                                                {"nativeOnDataChanged", "()V"},
++                                                                {"nativeOnSignOutCallback", "()V"},
 +                                                            },
 +                    symResolver);
  }
